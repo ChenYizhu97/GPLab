@@ -43,15 +43,6 @@ The data is mantained as json object stream. There are several benefits to save 
 2. Saving data is flexible. You could save anything you interested in by simply add another item in the json object.
 3. Data querying is efficient. The data querying could be break into two steps. First, filter the results by the key and value. Second, only read the value of interested key. Composing these two steps, you could quickly focus on the parts of the results that you are insterested in.
 
-### Controling the experiments
-
-Have a try at the properties GPLab provides:
-1. Reproducibility. GPLab makes experiments reproducible by using the fixed seeds for each experiment in the sequence. The seeds are automatically generated and maintained, but you can set it mannully in the location config/seeds.
-2. Default Models to evaluate the properties of graph pooling layer. For example, the models to evaluate the ability of pooling layer to preserving task-related information, the ability to improve task performance, and the expresiveness (see the paper).
-3. Customizing the components of your models, tuning the hyperparameters of trainning and adjusting your setting of experiments by modifying the configuration file easily.
-4. Naive pooling layers as a baseline. We proposed two naive pooling layers, one of which is sparse and another is dense, to give an relatively objective baseline to demostrate whether a pooling layer works at least.
-5. Data maintaining and querrying. The experiments results are saved as json objects stream, which keeps the information about results, pooling layers that evaluated, trainning and experiments setting and anything helpful. Besides, we provide a querry script that querries the data in SQL style to help analysis the results. For example, selecting the results regarding to certain pooling layer or/and dataset.
-
 # Usage
 # Set model and trainning
 The preset models have general architechture with some details you may adjust. For example, for the classifier model that evaluates the ability of pooling layer to preserve taske-related information, you may change the type of convolution layers, the number of convolution layers before and after the pooling layer, the activation function, the pre-transform MLPs, the readout MLPs and so on. All you need to do is to modify the setting in the config file, then when the model object is initiated, the model class will read the config file and generate the desired model for you. You may also custom the trainning setting such as the learning rate, patience, 
