@@ -1,0 +1,19 @@
+#title = "model and experiments config"
+
+[model]
+hidden_features = 128
+nonlinearity = "elu"
+p_dropout =  0.0
+conv_layer = "GraphConv"
+pre_gnn = [64,128]
+post_gnn = [128, 64]
+pre_pool_convs = 2
+post_pool_convs =1
+
+[experiment]
+runs = 5
+lr = 0.0001
+batch_size = 32
+patience = 50   
+epochs = 500
+seeds = "config/seeds"
