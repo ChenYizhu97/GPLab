@@ -5,12 +5,13 @@ from torch.nn import ModuleList
 from torch_geometric.nn import MLP 
 from torch_geometric.nn.resolver import activation_resolver
 from torch_geometric.data import Data
+#from LSPool.layers.resolver import conv_resolver, pool_resolver
 from layers.resolver import conv_resolver, pool_resolver
 from typing import Optional
 from torch_geometric.nn.pool import global_mean_pool
 
 DENSE_POOL = ["mincutpool", "diffpool"]
-SPARSE_POOL = ["topkpool", "sagpool"]
+SPARSE_POOL = ["topkpool", "sagpool", "lspool"]
 
 DEFAULT_CONF = "config/config.toml"
 

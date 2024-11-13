@@ -1,77 +1,32 @@
-# Graph Pooling Lab
 
-GPLab is a CLI app which offers a playground where you can quickly test, evaluate and analysis graph pooling layers. 
+# GPLab
+GPLab is implemented with the purpose of handling the messy we meet when carrying on graph pooling experiments.For example, comparing the performance of pooling methods in GNN models with various architectures, observing the behavior of pooling methods with different convolution layers and tracking other experimental settings. 
 
-## Why GPLab
-When carrying on experiments regarding to graph pooling, It could be messy to adjust the model architecture and tune the experiments setting, and keep the track of them at the same time.
-GPLab makes some effort to eliminate this kind of mess. 
-
-First, the model architecture and experiment setting could be changed by simply modifying the config file, which is a toml file readable to user, so you do not need to change all setting respectively in the code and have a top-level sense about the experiment.
-
-Then, when you chose to save the experiment results, this config information is also save with them so that you can easily keep track of each experiment. The results are saved as the json object stream, so that you can easily save and read all the information that you are insterested in.
-
-Besides, GPLab help you make the experiments reproducible and provide simple script to query the experiments results that you are interested in.
-
-Moreover, as a playground for evaluating graph pooling, we provides several default models designed to evaluate certain properties of graph pooling and two naive pooling layers to have a basic validation on the graph pooling layers.
+It provides a framework for *evaluating* graph pooling methods and *keep everything important in record*.
 
 
-## The precedure
-GPLab use the common procedure to evaulate and analysis the graph pooling layers. In this procedure, a basic GNN model is defined to evaluate certain properties of graph pooling. The different graph pooling layers are inserted into the model and the model is tested on several graph datasets. The results of different graph poolings are compared to reveal the performance of the desired graph pooling with respect to certain properties.
+## Experiment Mapping
+The core of GPLab is how it **treats**, **organizes** and **tracks** the experiments. 
+In GPLab, an execution of the main python script is recognized as an experiment, which trains and evaluates a model on a given dataset several runs and produces some results. For an experiment, its settings and results are persisted as a ***json object*** to record information about this experiment. 
+The settings are broken into several parts that we usually change independently during a series of experiments, which are *model* settings, *experiments(trainning)* settings, *pooling* and *dataset* settings. *Optional comment* settings are provided in case that some special tricks we do to the model should be written down.
 
-For each experiment, if the dataset doesn't have its division, the dataset is randomly divided into training, validation and test dataset by the ratio 8:1:1. The randomness is maintained by GPLab using a fixed stream of seeds, which could be automatically produced by GPLab or be set manually. This design makes sure that when you have two or more series of experiments, the experiments of the same position use the same seed, which reduces the influence of randomness when comparing different graph poolings. The fixed seeds also ensures the reproducibility of the experiments.
+In a nutshell, an *execution* of main script conducts an experiment and produces a *record* represented by a *json object* that tracks the experiment *settings and results*. A series of experiments produces a json object stream, on which we could *query* and *analysis* the experiments results.
 
-For the training, we use the early stopping with the patience. If the performance of model on validation dataset doesn't increase for some epochs (the patience), we think that the model is overfitting on training dataset and stop the training. The model take the weights from the epoch where overfitting does not happend, which is (current epoch - patience). Then the model performance are evaluated on the test dataset.
+## Framework
 
-GPLab will print the experiment information and outputs on the console, but you can also chose to save it into file. The experiment information contains the model and training setting, the graph pooling and the dataset. The outputs include the validation loss, test accuracy and epochs run. There is a query.py script which is also a simple CLI app that you could query the results from the saved file.
+On the fundemantal of experiment mapping, we build the body of GPLab. The main script conducts the experiment, which trains model and evaluates model on different metrics. By default, the dataset is divided into trainning, validation and test dataset with the ratio of 8:1:1 and the metric is mean accuracy for graph classification tasks. Other default settings of experiment are defined in the file *config/experiment.toml*.
 
-### Default pooling and model
-The graph poolings fall into different types. Depending on how many original nodes contribute to each pooled node, the graph pooling could be sparse or dense. If there are constant nodes that contribute to each pooled node (O(1)), the graph pooling is sparse. If the number of nodes that contribute to each pooled node depends on the number of original nodes (O(n)), the graph pooling is dense. We proposed two naive pooling for each of these two types, which only pool the graph using the node attributes and do not take the advantage of graph topology. These naive pooling could be a quick tool to validate whether your design of new graph pooling works.
+The model and layers directories are the place to put GNN models and customed pooling layers respectively. For models, we provide two graph classification models for now. One is in hierarchical style and another is in plain style. Both of these two models has some configurable parts that you could change in the config file (default *config/model.config*). For pooling layers, we implement two naive pooling layers that serve as a trivial baseline.  There is one thing to be noted. In our design of the GNN model, the model always take the graph with sparse layout as input(x and edge index), so the convolution layers also require sparse inputs, which means the *conv_layer* setting in *model.toml* cant be changed to layers require dense inputs like DenseGCN. For the pooling layers that require dense inputs, we provide an wrapper class(*PoolAdapter*) that transforms the inputs and outputs before and after pooling.
 
-One basic model is designed to evaluate the ability of the graph pooling to preserve task-related information. The model consists of pre-transformed mlp, convolution layers before pooling, inserted pooling layer, convolution layers after pooling and readout mlp. Different graph pooling layers are inserted to the basic model on the specific position. if the pooled graph performs better on given tasks, we say that the corresponding graph pooling is able to preserve more task-related information.
+Besides, GPLab provides a convenient tool to query the json objects produces by experiments. The query operation on json objects is implemented in an flexible and extendable way which makes it easy to write customed querys. 
 
-(other model)
+## Reproducibility
+GPLab controls the reproducibility by specifying the random seeds explicitly. The random seeds used by each run in an experiment is loaded from the file *config/seeds* by default. In case that there are no enough seeds for given runs, GPLab will generate random seeds and persist them into the seeds file. The seeds are specified for each run in case that one wants to do some experiments regarding random seeds.
 
-### Model and experiment setting
-Though the general hierarchy of basic model is fixed, the details could be adjusted to form a refined customized model. You may simple do this by modifying the config file at location config/config.toml, which is readable and self-explanatory. The model is generated from the config file so you don't have to change the code of the model. You may change the number of layers, hidden parameters, activation of the model and so on. 
+## Query Design
+The query operation on experiments is implemented in a way that exploiti the advantages of json object data structure. In a query procedure, we first find the records that meet our conditions, then we focus on the related fields of the records. Such procedure could be mapped into two operations on json object, which are **filter** and **read**.
+The filter operation compares the items in json object to filter the records that satisfies our conditions. Then read operation returns the related keys and values of these records. 
+Combining filter and read operations, one could implement customed query with ease. 
 
-To have a general perception of the experiments, you may also change the experiment setting at the same location, such as learning rate, batch size, maximum epochs and anything regarding to the experiments. However, you may feed some of the experiments setting as command parameters when you run the main script, depending on your preference.
-
-
-### Data maintain and querry
-The data is mantained as json object stream. There are several benefits to save data as this type:
-1. Ultilize the json library to manipulate the data conveniently.
-2. Saving data is flexible. You could save anything you interested in by simply add another item in the json object.
-3. Data querying is efficient. The data querying could be break into two steps. First, filter the results by the key and value. Second, only read the value of interested key. Composing these two steps, you could quickly focus on the parts of the results that you are insterested in.
-
-# Usage
-# Set model and trainning
-The preset models have general architechture with some details you may adjust. For example, for the classifier model that evaluates the ability of pooling layer to preserve taske-related information, you may change the type of convolution layers, the number of convolution layers before and after the pooling layer, the activation function, the pre-transform MLPs, the readout MLPs and so on. All you need to do is to modify the setting in the config file, then when the model object is initiated, the model class will read the config file and generate the desired model for you. You may also custom the trainning setting such as the learning rate, patience, 
-## Run experiment
-Run an experiment using the script main.py. The script takes some arguments as follows:
-
-pool_ratio: float, pooling ratio.
-pooling: str. Pooling layer to use.
-dataset: str. Dataset to evaluate on.
-config: str. Location where config file is. Default value is config/config.toml
-logging: Optional[str]. The file to save experiment results. None if don't save results.
-comment: Optional[str]. Any comment to save with the experiment results.
-
-For example. The following command evaluates model defined by config/config.toml with pooling layer lspool on the dataset proteins and saves the results in file logs/example.log
-`python main.py --pooling lspool --pool_ratio 0.5 --logging logs/example`
-
-You may compose a batch of python command in a shell script to run a batch of experiments.
-
-The results are of experiments are saved as json objects stream. The json objects is flexible which allows you to save any information helpful about the experiments, besides, query such data structure is easy because we can simply break the query operations into a sets of filtering operations on the dict that is loaded from the json objects.
-The test accuracy, validation loss and epoches are saved with other descriptive information about the experiments, such as trainning and model setting.  The mean and std of test accuracy is calculated as the metrics.
-
-## Query the results
-Run a query using the script querry.py. The script takes some arguments as follows:
-
-file: str. The file that keeps the json objects.
-pool: Optional[str]. Query the experiments results about certain pooling layer.
-dataset: Optional[str]. Query the experiments results about certain dataset.
-comment: Optional[str]. Query the experiments results that contains specific comment.
-
-For example, the follwing command will query the experiments results about lspool on the dataset proteins given the log file logs/example.log
-`python querry.py logs/example.log --pool lspool --dataset proteins`
-
+The figure below shows an example of query and the structure of a record.
+![A query.](GPLab.png)
