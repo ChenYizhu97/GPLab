@@ -5,14 +5,15 @@ from torch_geometric.utils import to_dense_adj, to_dense_batch
 from torch_geometric.nn.dense import dense_diff_pool, dense_mincut_pool
 from utils.data import to_sparse_batch
 from utils.connect import dense_connect
-
-
+from typing_extensions import Union
+from torch_geometric.nn.resolver import activation_resolver
 
 class PoolAdapter(torch.nn.Module):
     def __init__(
             self, 
             pool:Optional[torch.nn.Module],
             pool_method: str,
+            nonlinearity:Union[str, callable]="relu",
             *args, 
             **kwargs
     ) -> None:
@@ -20,7 +21,7 @@ class PoolAdapter(torch.nn.Module):
         self.pool = pool
         self.pool_method = pool_method
         self.aux_loss = None
-
+        self.nonlinearity = activation_resolver(nonlinearity)
         self.reset_parameters()
     
     def forward(
@@ -30,7 +31,13 @@ class PoolAdapter(torch.nn.Module):
             batch: Tensor
     ):
         x, mask, adj = self._pre_pool(x, edge_index, batch)
-        s = self.pool(x)
+        # pool
+        if self.pool_method == "diffpool":
+            s = self.pool(x, adj, mask)
+        if self.pool_method in ["mincutpool", "densepool"]:
+            s = self.pool(x)
+
+        # connect
         if self.pool_method == "mincutpool":
             x, adj, l1, l2 = dense_mincut_pool(x, adj, s, mask)
             self.aux_loss = 0.5*l1 + l2
@@ -41,7 +48,6 @@ class PoolAdapter(torch.nn.Module):
             x, adj = dense_connect(x, adj, s, mask)
 
         x, edge_index, batch = self._post_pool(x, adj)
-        
         return x, edge_index, batch, self.aux_loss
 
     

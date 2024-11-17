@@ -21,10 +21,10 @@ The model and layers directories are the place to put GNN models and customed po
 Besides, GPLab provides a convenient tool to query the json objects produces by experiments. The query operation on json objects is implemented in an flexible and extendable way which makes it easy to write customed querys. 
 
 ## Reproducibility
-GPLab controls the reproducibility by specifying the random seeds explicitly. The random seeds used by each run in an experiment is loaded from the file *config/seeds* by default. In case that there are no enough seeds for given runs, GPLab will generate random seeds and persist them into the seeds file. The seeds are specified for each run in case that one wants to do some experiments regarding random seeds.
+GPLab controls the reproducibility by specifying the random seeds explicitly. The random seeds used by each run in an experiment are loaded from the file *config/seeds* by default. In case that there are no enough seeds for given runs, GPLab will generate random seeds and persist them into the seeds file. The seeds are specified for each run in case that one wants to do some experiments regarding random seeds.
 
 ## Query Design
-The query operation on experiments is implemented in a way that exploiti the advantages of json object data structure. In a query procedure, we first find the records that meet our conditions, then we focus on the related fields of the records. Such procedure could be mapped into two operations on json object, which are **filter** and **read**.
+The query operation on experiments is implemented in a way that exploits the advantages of json object data structure. In a query procedure, we first find the records that meet our conditions, then we focus on the related fields of the records. Such procedure could be mapped into two operations on json object, which are **filter** and **read**.
 The filter operation compares the items in json object to filter the records that satisfies our conditions. Then read operation returns the related keys and values of these records. 
 Combining filter and read operations, one could implement customed query with ease. 
 
