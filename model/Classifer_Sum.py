@@ -3,7 +3,6 @@ import torch
 import torch.nn.functional as F
 from torch_geometric.nn import MLP, BatchNorm
 from torch_geometric.nn.resolver import activation_resolver
-from torch_geometric.nn.pool import global_mean_pool
 from torch_geometric.data import Data
 from layers.resolver import conv_resolver, pool_resolver
 from layers.functional import readout
