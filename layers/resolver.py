@@ -2,9 +2,8 @@ from typing import Optional, Union
 import torch
 from torch.nn import Linear
 from torch_geometric.nn import GraphConv, GCNConv, DenseGCNConv, GINConv
-from torch_geometric.nn.pool import TopKPooling, ASAPooling, SAGPooling
-from .SparsePool import SparsePooling
-from .PoolAdapter import PoolAdapter
+from torch_geometric.nn.pool import TopKPooling, ASAPooling
+from .pool import LCPooling, SAGPooling, PoolAdapter
 
 
 def conv_resolver(layer:str) -> Optional[torch.nn.Module]:
@@ -24,11 +23,11 @@ def pool_resolver(pool:str, in_channels:int, ratio:float=0.5, avg_node_num:Optio
     if avg_node_num is not None: k = int(avg_node_num*ratio)
 
     if pool == "topkpool": pool_layer = TopKPooling(in_channels, ratio=ratio)
+    if pool == "lcpool": pool_layer = LCPooling(in_channels, ratio=ratio, nonlinearity=nonlinearity)
     if pool == "sagpool": pool_layer = SAGPooling(in_channels, ratio=ratio)
-    if pool == "sparsepool": pool_layer = SparsePooling(in_channels, ratio=ratio)
     if pool == "asapool": pool_layer = ASAPooling(in_channels, ratio=ratio)
     #for diffpool, mincutpool, densepool, the learning part  is a linear layer.
-    if pool in ["mincutpool", "densepool"]: pool_layer = PoolAdapter(Linear(in_channels, k), pool)
+    if pool == "mincutpool": pool_layer = PoolAdapter(Linear(in_channels, k), pool)
     if pool == "diffpool": pool_layer = PoolAdapter(DenseGCNConv(in_channels, k), pool, nonlinearity=nonlinearity)
      
     return pool_layer
