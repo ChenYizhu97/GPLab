@@ -5,7 +5,7 @@ from torch.nn import Linear
 from torch_geometric.nn.pool.connect import FilterEdges
 from torch_geometric.nn.resolver import activation_resolver
 from torch_geometric.nn.pool.select import SelectOutput
-from torch_geometric.nn.pool.select.topk import topk
+from ..functional import topk
 
 class SparsePooling(torch.nn.Module):
     def __init__(

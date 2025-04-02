@@ -1,13 +1,15 @@
 import toml
 import torch
 import torch.nn.functional as F
-from torch_geometric.nn import MLP, BatchNorm
+from torch.nn import LayerNorm
 from torch_geometric.nn.resolver import activation_resolver
 from torch_geometric.data import Data
 from layers.resolver import conv_resolver, pool_resolver
 from layers.functional import readout
 from typing import Optional
 from .Model import MODEL
+#from .MLP import MLP
+from torch_geometric.nn import MLP
 DENSE_POOL = ["mincutpool", "diffpool"]
 SPARSE_POOL = ["topkpool", "sagpool", "lspool"]
 
@@ -29,7 +31,8 @@ class GRAPH_CLASSIFIER_SUM(MODEL):
         super().__init__(*args, **kwargs)
         self.n_node_features = n_node_features
         self.n_classes = n_classes
-
+        self.pool_method = pool_method
+        
         #load model config from file if no dict given
         if config is None:
             print("No config provided to model...Using default config...")
@@ -37,11 +40,10 @@ class GRAPH_CLASSIFIER_SUM(MODEL):
 
         self._load_from_config(config)
 
-        self.pool_method = pool_method
+        
         self.nonlinearity = activation_resolver(self.nonlinearity)
         self.CONV = conv_resolver(self.CONV)
-        self.pre_gnn = MLP(channel_list=self.pre_gnn, act=self.nonlinearity, norm="batch_norm", dropout=self.p_dropout) 
-        self.bn_pre_gnn = BatchNorm(in_channels=self.hidden_features)
+        self.pre_gnn = MLP(channel_list=self.pre_gnn, act=self.nonlinearity, bias=True, norm="layer_norm", plain_last=False, dropout=self.p_dropout) 
 
         self.pool = pool_resolver(
             self.pool_method, 
@@ -50,16 +52,17 @@ class GRAPH_CLASSIFIER_SUM(MODEL):
             avg_node_num=avg_node_num, 
             nonlinearity=self.nonlinearity,
         )
-        self.bn_pool = BatchNorm(in_channels=self.hidden_features)
-
+        
         self.conv1 = self.CONV(self.hidden_features, self.hidden_features)
-        self.bn_conv1 = BatchNorm(in_channels=self.hidden_features)
+        self.ln_conv1 = LayerNorm(self.hidden_features)
 
         self.conv2 = self.CONV(self.hidden_features, self.hidden_features)
-        self.bn_conv2 = BatchNorm(in_channels=self.hidden_features)
+        self.ln_conv2 = LayerNorm(self.hidden_features)
 
         self.global_pool = readout
-        self.post_gnn = MLP(channel_list=self.post_gnn, act=self.nonlinearity, norm="batch_norm", dropout=self.p_dropout)
+
+        bias = [True] * (len(self.post_gnn)-2)+[False]
+        self.post_gnn = MLP(channel_list=self.post_gnn, act=self.nonlinearity, bias=bias, norm="layer_norm", plain_last=True, dropout=self.p_dropout)
 
         self.reset_parameters()
 
@@ -72,10 +75,10 @@ class GRAPH_CLASSIFIER_SUM(MODEL):
 
 
         x = self.pre_gnn(x)
-        x = self.bn_pre_gnn(x)
-        
-        x = self.nonlinearity(self.conv1(x, edge_index))
-        x = self.bn_conv1(x)
+
+        x = self.conv1(x, edge_index)
+        x = self.ln_conv1(x)
+        x = self.nonlinearity(x)
 
         x_out_before_pool = self.global_pool(x=x, batch=batch)
 
@@ -83,14 +86,13 @@ class GRAPH_CLASSIFIER_SUM(MODEL):
         x, edge_index, batch, aux_loss = self._pool(self.pool, x=x, edge_index=edge_index, batch=batch)
 
 
-        x = self.bn_pool(x)
+        x = self.conv2(x, edge_index)
+        x = self.ln_conv2(x)
+        x = self.nonlinearity(x)
 
-        x = self.nonlinearity(self.conv2(x, edge_index))
-        x = self.bn_conv2(x)
-
-        x_out = self.global_pool(x=x, batch=batch)
+        x = self.global_pool(x=x, batch=batch)
         
-        x = x_out_before_pool + x_out
+        x = x_out_before_pool + x
         x = self.post_gnn(x)
         
         y = F.log_softmax(x, dim=1)
@@ -103,4 +105,6 @@ class GRAPH_CLASSIFIER_SUM(MODEL):
         self.conv1.reset_parameters()
         self.conv2.reset_parameters()
         self.post_gnn.reset_parameters()
+        self.ln_conv1.reset_parameters()
+        self.ln_conv2.reset_parameters()
 

@@ -1,5 +1,5 @@
 """
-This pooling layer is adapted from the pytorch version, because the pytorch version is slightly inconsistent with the paper, which introduces an extra parameter.
+This pooling layer is adapted from the pytorch version, because the current pytorch version is slightly inconsistent with the paper, which introduces an extra parameter.
 """
 from typing import Callable, Optional, Tuple, Union
 import torch
@@ -7,7 +7,7 @@ from torch import Tensor
 from torch_geometric.nn import GraphConv
 from torch_geometric.nn.pool.connect import FilterEdges
 from torch_geometric.nn.pool.select import Select, SelectOutput
-from functional import topk
+from ..functional import topk
 from torch_geometric.nn.resolver import activation_resolver
 from torch_geometric.typing import OptTensor
 from torch_geometric.utils import softmax

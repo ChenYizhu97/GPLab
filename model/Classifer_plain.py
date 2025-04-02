@@ -1,7 +1,7 @@
 import toml
 import torch
 import torch.nn.functional as F
-from torch_geometric.nn import MLP, BatchNorm
+from torch_geometric.nn import MLP, BatchNorm, LayerNorm
 from torch_geometric.nn.resolver import activation_resolver
 from torch_geometric.data import Data
 from layers.resolver import conv_resolver, pool_resolver
@@ -20,6 +20,7 @@ class GRAPH_CLASSIFIER_PLAIN(MODEL):
             pool_method:Optional[str]=None,
             config:Optional[dict]=None,
             avg_node_num:Optional[float]=None,
+            norm: Optional[str] = "layer_norm",
             *args, 
             **kwargs
     ):
@@ -27,7 +28,10 @@ class GRAPH_CLASSIFIER_PLAIN(MODEL):
         self.n_node_features = n_node_features
         self.n_classes = n_classes
         self.pool_method = pool_method
-
+        if norm == "layer_norm":
+            self.norm = LayerNorm
+        else:
+            self.norm = BatchNorm
         #load model config from file if no dict given
         if config is None:
             print("No config provided to model...Using default config...")
@@ -37,12 +41,12 @@ class GRAPH_CLASSIFIER_PLAIN(MODEL):
 
         self.nonlinearity = activation_resolver(self.nonlinearity)
         self.CONV = conv_resolver(self.CONV)
-        self.pre_gnn = MLP(channel_list=self.pre_gnn, act=self.nonlinearity, norm="batch_norm", dropout=self.p_dropout) 
-        self.bn_pre_gnn = BatchNorm(in_channels=self.hidden_features)
+        self.pre_gnn = MLP(channel_list=self.pre_gnn, act=self.nonlinearity, norm=norm, bias=True, plain_last=False, dropout=self.p_dropout) 
+
         self.conv1 = self.CONV(self.hidden_features, self.hidden_features)
-        self.bn_conv1 = BatchNorm(in_channels=self.hidden_features)
+        self.ln_conv1 = self.norm(self.hidden_features)
         self.conv2 = self.CONV(self.hidden_features, self.hidden_features)
-        self.bn_conv2 = BatchNorm(in_channels=self.hidden_features)
+        self.ln_conv2 = self.norm(self.hidden_features)
 
         self.pool = pool_resolver(
             self.pool_method, 
@@ -51,12 +55,10 @@ class GRAPH_CLASSIFIER_PLAIN(MODEL):
             avg_node_num=avg_node_num, 
             nonlinearity=self.nonlinearity,
         )
-        if self.pool is not None:
-            self.bn_pool = BatchNorm(in_channels=self.hidden_features)
-    
 
         self.global_pool = readout
-        self.post_gnn = MLP(channel_list=self.post_gnn, act=self.nonlinearity, norm="batch_norm", dropout=self.p_dropout)
+        bias = [True] * (len(self.post_gnn)-2)+[False]
+        self.post_gnn = MLP(channel_list=self.post_gnn, act=self.nonlinearity, norm=norm, bias=bias, plain_last=True, dropout=self.p_dropout)
 
         self.reset_parameters()
 
@@ -68,20 +70,20 @@ class GRAPH_CLASSIFIER_PLAIN(MODEL):
         x, edge_index, batch = data.x, data.edge_index, data.batch
 
         x = self.pre_gnn(x)
-        x = self.bn_pre_gnn(x)
+
         
-        x = self.nonlinearity(self.conv1(x, edge_index))
-        x = self.bn_conv1(x)
+        x = self.conv1(x, edge_index)
+        x = self.ln_conv1(x)
+        x = self.nonlinearity(x)
 
 
         #pooling
-        x, edge_index, batch, aux_loss_1 = self._pool(self.pool, x=x, edge_index=edge_index, batch=batch)
+        x, edge_index, batch, aux_loss = self._pool(self.pool, x=x, edge_index=edge_index, batch=batch)
         
-        if self.pool is not None:
-            x = self.bn_pool(x)
 
-        x = self.nonlinearity(self.conv2(x, edge_index))
-        x = self.bn_conv2(x)
+        x = self.conv2(x, edge_index)
+        x = self.ln_conv2(x)
+        x = self.nonlinearity(x)
 
 
         x = self.global_pool(x=x, batch=batch)
@@ -90,7 +92,7 @@ class GRAPH_CLASSIFIER_PLAIN(MODEL):
         y = F.log_softmax(x, dim=1)
 
 
-        return y, aux_loss_1
+        return y, aux_loss
     
     def reset_parameters(self):
         self.pre_gnn.reset_parameters()
@@ -98,5 +100,7 @@ class GRAPH_CLASSIFIER_PLAIN(MODEL):
         self.conv1.reset_parameters()
         self.conv2.reset_parameters()
         self.post_gnn.reset_parameters()
+        self.ln_conv1.reset_parameters()
+        self.ln_conv2.reset_parameters()
 
 
