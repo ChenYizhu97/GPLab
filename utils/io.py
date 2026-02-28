@@ -1,5 +1,7 @@
 import os
 import sys
+import platform
+from datetime import datetime, timezone
 import torch
 from rich import print as rprint
 
@@ -9,8 +11,10 @@ def print_expr_info(
         file=sys.stderr
 ):
     #print the information of experiments.
-    
-    device_property = torch.cuda.get_device_properties(device)
+    if device.type == "cuda" and torch.cuda.is_available():
+        device_property = torch.cuda.get_device_properties(device)
+    else:
+        device_property = f"CPU({platform.processor() or 'unknown'})"
     
     info_str = f"{sep_c('=')}\nExperiments setting:\n{conf['experiment']}\n{sep_c('-')}\n"\
     + f"Device properties:\n{device_property}\n{sep_c('-')}\n"\
@@ -21,11 +25,25 @@ def print_expr_info(
     rprint(info_str, file=file)
 
 
+def build_runtime_meta(device: torch.device) -> dict:
+    meta = {
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "python_version": sys.version.split()[0],
+        "torch_version": torch.__version__,
+        "device": str(device),
+    }
+    return meta
+
+
 def sep_c(
         sep:chr, 
         ratio:float=0.8
 ) -> int:
     # generate separetor which fits the console width
-    
-    w = int(ratio * os.get_terminal_size().columns)
+
+    try:
+        columns = os.get_terminal_size().columns
+    except OSError:
+        columns = 120
+    w = int(ratio * columns)
     return w*sep

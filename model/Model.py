@@ -47,8 +47,8 @@ class MODEL(torch.nn.Module):
 
         #Model setting
         self.pre_gnn = [self.n_node_features]
-        self.pre_gnn.extend(config["pre_gnn"])
+        self.pre_gnn.extend(list(config["pre_gnn"]))
 
-        self.post_gnn = config["post_gnn"]
+        self.post_gnn = list(config["post_gnn"])
         self.post_gnn.append(self.n_classes)
         self.CONV = config["conv_layer"]

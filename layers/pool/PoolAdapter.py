@@ -30,6 +30,10 @@ class PoolAdapter(torch.nn.Module):
             edge_index: Tensor,
             batch: Tensor
     ):
+        # NOTE: This adapter intentionally follows GPLab's unified benchmark protocol:
+        # dense pooling outputs are converted back to sparse tensors so all pooling methods
+        # can share one downstream sparse backbone. Paper-style dense-only backbones are
+        # intentionally not handled here for now.
         x, mask, adj = self._pre_pool(x, edge_index, batch)
         # pool
         if self.pool_method == "diffpool":

@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import random
+from pathlib import Path
 from torch_geometric.data import Dataset
 from torch_geometric.loader import DataLoader
 
@@ -23,9 +24,10 @@ def generate_loader(
         dataset:Dataset, 
         batch_size:int, 
         shuffle:bool=False, 
+        seed:int=0,
 ) -> DataLoader:
     g = torch.Generator()
-    g.manual_seed(0)
+    g.manual_seed(seed)
     data_loader = DataLoader(dataset=dataset, 
                              batch_size=batch_size, 
                              shuffle=shuffle,
@@ -38,25 +40,23 @@ def load_seeds(
         seeds:str, 
         runs:int
 ) -> list[int]:
-    with open(seeds, "a+") as f:
-        f.seek(0)
-        #strip space
-        raw_seeds = f.readline().strip()
-        seeds = raw_seeds.split(' ')
+    if runs <= 0:
+        return []
 
-        # situation the seed file is empty
-        if seeds[0] == '':
-            seeds = []
+    seed_path = Path(seeds)
+    seed_path.parent.mkdir(parents=True, exist_ok=True)
+    seed_path.touch(exist_ok=True)
 
-        n_seeds = len(seeds)
-        if n_seeds > 0 :
-            seeds = [int(seed) for seed in seeds]
-        
-        # generate new seeds if there are not enough seeds in file.
-        if runs > n_seeds:
-            seeds_generated= list(np.random.random_integers(1, 100, runs - n_seeds))
-            [print(seed, file=f, end=' ') for seed in seeds_generated]
-            seeds.extend(seeds_generated)
-        else:
-            seeds = seeds[:runs]
-    return seeds
+    raw_tokens = seed_path.read_text().split()
+    seed_values = [int(token) for token in raw_tokens]
+
+    if runs > len(seed_values):
+        # Keep generation deterministic so repeated bootstrap produces the same sequence.
+        # Generate a full deterministic sequence and append only the missing suffix.
+        rng = np.random.default_rng(0)
+        generated_full = rng.integers(1, 10**9, size=runs, endpoint=False).tolist()
+        generated = generated_full[len(seed_values):]
+        seed_values.extend(generated)
+        seed_path.write_text(" ".join(str(seed) for seed in seed_values) + "\n")
+
+    return seed_values[:runs]

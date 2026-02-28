@@ -5,3 +5,5 @@ batch_size = 32
 patience = 50 
 epochs = 500
 seeds = "config/seeds"
+train_ratio = 0.8
+val_ratio = 0.1

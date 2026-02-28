@@ -37,3 +37,12 @@ Factory signature recommendation:
 def build_pool(in_channels: int, ratio: float = 0.5, avg_node_num=None, nonlinearity="relu"):
     ...
 ```
+
+## Split Ratio
+
+The train/validation/test split is configurable in `config/experiment.toml` via:
+
+- `train_ratio`
+- `val_ratio`
+
+The test ratio is computed as `1 - train_ratio - val_ratio`.
