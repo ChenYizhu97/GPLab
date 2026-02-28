@@ -14,3 +14,26 @@ The implementation of queries on records exploits the advantages of the JSON obj
 
 The figure below shows an example of a query and the structure of a record.
 ![A query.](GPLab.png)
+
+## Pooling Methods
+
+GPLab supports built-in pooling methods and custom pooling plugins.
+
+- Built-in methods: `nopool`, `topkpool`, `sagpool`, `asapool`, `sparsepool`, `mincutpool`, `diffpool`, `densepool`.
+- Custom plugin format: `--pooling <python_module>:<factory_name>`.
+
+Example:
+
+```bash
+python3 main.py \
+  --pooling examples.custom_pool_plugin:build_pool \
+  --pool-ratio 0.6 \
+  --dataset PROTEINS
+```
+
+Factory signature recommendation:
+
+```python
+def build_pool(in_channels: int, ratio: float = 0.5, avg_node_num=None, nonlinearity="relu"):
+    ...
+```

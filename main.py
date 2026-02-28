@@ -10,6 +10,7 @@ from torch_geometric.nn import summary
 from torcheval.metrics import MulticlassAccuracy, Mean
 # from model.Classifier import GRAPH_CLASSIFIER
 from model.Classifer_Sum import GRAPH_CLASSIFIER_SUM
+from layers.resolver import list_builtin_pools
 from utils.io import print_expr_info, sep_c
 from utils.dataset import load_dataset, split_dataset
 from utils.reproducibility import load_seeds, generate_loader, set_np_and_torch
@@ -17,14 +18,14 @@ from training import train, test
 from typing_extensions import Annotated, Optional
 
 TU_DATASET = ["MUTAG", "PROTEINS", "ENZYMES", "FRANKENSTEIN", "Mutagenicity", "AIDS", "DD", "NCI1", "COX2"]
-POOLING = ["nopool", "lspool", "topkpool", "sagpool", "diffpool", "mincutpool", "densepool", "sparsepool", "asapool"]
+POOLING = list_builtin_pools()
 
 app = typer.Typer(pretty_exceptions_enable=False)
 
 @app.command()
 def main(
         pooling: Annotated[str, typer.Option()] = "nopool",
-        pool_ratio: Annotated[float, typer.Option()] = "0.5",
+        pool_ratio: Annotated[float, typer.Option(help="Pooling ratio for built-in or custom pooling methods.")] = 0.5,
         dataset: Annotated[str, typer.Option()] = "PROTEINS",
         logging: Annotated[Optional[str], typer.Option()] = None,
         model_conf: Annotated[str, typer.Option()] = "config/model.toml",
@@ -33,12 +34,18 @@ def main(
 ):
     #check dataset and pooling
     assert dataset in TU_DATASET
-    assert pooling in POOLING
+    is_custom_pool = ":" in pooling
+    if not is_custom_pool:
+        assert pooling in POOLING
 
     # load setting from config
     mode_conf = toml.load(model_conf)
     expr_conf = toml.load(expr_conf)
-    pool_conf = dict(method=pooling, ratio=pool_ratio)
+    pool_conf = dict(
+        method=pooling,
+        ratio=pool_ratio,
+        source="custom_factory" if is_custom_pool else "builtin",
+    )
     # merge dictionary
     conf = {**mode_conf, **expr_conf}
 
@@ -72,6 +79,7 @@ def main(
         dataset.num_node_features, 
         dataset.num_classes, 
         pool_method=pooling, 
+        ratio=pool_ratio,
         config=conf["model"],
         avg_node_num=avg_node_num
     ).to(device)

@@ -11,7 +11,7 @@ from .Model import MODEL
 #from .MLP import MLP
 from torch_geometric.nn import MLP
 DENSE_POOL = ["mincutpool", "diffpool"]
-SPARSE_POOL = ["topkpool", "sagpool", "lspool"]
+SPARSE_POOL = ["topkpool", "sagpool", "sparsepool"]
 
 DEFAULT_CONF = "config/model.toml"
 
@@ -107,4 +107,3 @@ class GRAPH_CLASSIFIER_SUM(MODEL):
         self.post_gnn.reset_parameters()
         self.ln_conv1.reset_parameters()
         self.ln_conv2.reset_parameters()
-

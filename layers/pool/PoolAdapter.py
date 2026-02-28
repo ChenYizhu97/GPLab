@@ -4,7 +4,7 @@ from torch import Tensor
 from torch_geometric.utils import to_dense_adj, to_dense_batch
 from torch_geometric.nn.dense import dense_diff_pool, dense_mincut_pool
 from utils.data import to_sparse_batch
-from functional import dense_connect
+from ..functional import dense_connect
 from typing_extensions import Union
 from torch_geometric.nn.resolver import activation_resolver
 
