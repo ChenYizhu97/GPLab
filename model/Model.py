@@ -9,7 +9,10 @@ from layers.pool.contracts import validate_pool_output
 class MODEL(torch.nn.Module): 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        # Flag to track if pool output validation has been performed
+        # Flag to track if pool output validation has been performed.
+        # Note: This validates structural contract (type, shape, device), not parameter values.
+        # Once validated, the pooling implementation is correct and doesn't need re-validation.
+        # Intentionally NOT reset in reset_parameters() to avoid redundant checks across runs.
         self._pool_validated = False
     
     def forward(self, data:Data):
