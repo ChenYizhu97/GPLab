@@ -1,4 +1,4 @@
-﻿# GPLab
+# GPLab
 
 A lightweight benchmark lab for graph pooling methods under a unified protocol.
 
@@ -52,7 +52,7 @@ GPLab/
   config/
     model.toml               # model defaults
     experiment.toml          # experiment defaults
-    seeds                    # seed list file
+    seeds                    # optional seed list file
   examples/
     custom_pool_plugin.py    # plugin example
     logs/                    # sample JSONL logs
@@ -155,7 +155,10 @@ Model backbone and head:
 Experiment control:
 - `runs`, `epochs`, `patience`
 - `lr`, `batch_size`
-- `seeds` path
+- `seed_mode` (`auto` by default, `file` to read seeds from file)
+- `seed_base` (deterministic seed generator base in `auto` mode)
+- `allow_duplicate_seeds` (default `false`, optional when you intentionally replay fixed duplicate seeds)
+- `seeds` path (used when `seed_mode=file`)
 - `train_ratio`, `val_ratio`
 
 `test_ratio` is derived as `1 - train_ratio - val_ratio`.
@@ -165,9 +168,37 @@ Experiment control:
 GPLab tracks reproducibility at multiple levels:
 - Seeded NumPy/Torch/Python random state.
 - Seeded DataLoader generator + worker init seeds.
-- Stored run seed list in `config/seeds`.
 - Deterministic split fingerprint via `split_digest`.
-- Full config and runtime metadata (`python`, `torch`, `device`, UTC timestamp) in each log record.
+- Full config snapshot (`model`, `experiment`, `pool`) in each log record.
+- `repro` block (`v2`) with fixed fields:
+  - `version`, `seed_mode`, `seed_base`, `seeds`
+  - `split_digest`, `split_ratio`
+  - `dataset_id` (`name`, graph size summary)
+  - `env` (`python`, `torch`, `torch_geometric`, device, cudnn flags)
+
+### Standard Repro Workflow
+
+1. Generate an experiment log record:
+
+```bash
+python3 main.py \
+  --pooling sparsepool \
+  --dataset PROTEINS \
+  --logging runs/bench_v2.jsonl \
+  --comment "purpose=baseline;protocol=v2;date=2026-03-20"
+```
+
+2. Replay from one log record (`<file>:<line>`):
+
+```bash
+python3 main.py --replay-from-log runs/bench_v2.jsonl:1
+```
+
+3. Validate reproducibility fields and split digest:
+
+```bash
+python3 querry.py runs/bench_v2.jsonl --verify-repro --show-repro
+```
 
 ## Logged Record Schema
 
@@ -180,6 +211,7 @@ Main fields:
 - `dataset`
 - `comment` (optional)
 - `meta`
+- `repro` (schema `v2`)
 - `results.statistic` (`mean`, `std`)
 - `results.data` (`val_loss`, `test_acc`, `epochs_stop`, per-run details)
 
@@ -191,7 +223,32 @@ Use `querry.py` to filter logs by pool, dataset, and comment:
 python3 querry.py runs/tu_pooling.jsonl --pool sagpool --dataset PROTEINS --epoch
 ```
 
-Output includes summary statistics and optional average early-stop epoch.
+Reproducibility inspection:
+
+```bash
+python3 querry.py runs/tu_pooling.jsonl --show-repro
+python3 querry.py runs/tu_pooling.jsonl --verify-repro
+```
+
+Only v2 records (with complete `repro` block) are supported by reproducibility inspection commands.
+
+## Minimal Benchmark Template
+
+Recommended template for pooled benchmark batches:
+
+```bash
+python3 main.py \
+  --pooling sparsepool \
+  --pool-ratio 0.5 \
+  --dataset PROTEINS \
+  --logging runs/bench_proteins_v2.jsonl \
+  --comment "purpose=pooling_benchmark;protocol=v2;date=2026-03-20"
+```
+
+Recommended `comment` fields:
+- `purpose=<task_or_hypothesis>`
+- `protocol=v2`
+- `date=<YYYY-MM-DD>`
 
 ## Known Limitations
 
@@ -203,3 +260,5 @@ Output includes summary statistics and optional average early-stop epoch.
 ## Notes on Naming
 
 A few filenames use legacy spellings (`querry.py`, `Classifer_*`). They are part of current public CLI/module paths, so treat them as stable unless refactoring end-to-end.
+
+

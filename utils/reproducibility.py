@@ -4,8 +4,10 @@ import random
 from pathlib import Path
 from torch_geometric.data import Dataset
 from torch_geometric.loader import DataLoader
+from typing import Optional
 
-def set_np_and_torch(seed:int=0):
+
+def set_np_and_torch(seed: int = 0):
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
@@ -15,30 +17,34 @@ def set_np_and_torch(seed:int=0):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-def seed_worker(worker_id:int):
+
+def seed_worker(worker_id: int):
     worker_seed = torch.initial_seed() % 2**32
     np.random.seed(worker_seed)
     random.seed(worker_seed)
 
+
 def generate_loader(
-        dataset:Dataset, 
-        batch_size:int, 
-        shuffle:bool=False, 
-        seed:int=0,
+        dataset: Dataset,
+        batch_size: int,
+        shuffle: bool = False,
+        seed: int = 0,
 ) -> DataLoader:
     g = torch.Generator()
     g.manual_seed(seed)
-    data_loader = DataLoader(dataset=dataset, 
-                             batch_size=batch_size, 
-                             shuffle=shuffle,
-                             worker_init_fn=seed_worker,
-                             generator=g
-                            )
+    data_loader = DataLoader(
+        dataset=dataset,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        worker_init_fn=seed_worker,
+        generator=g,
+    )
     return data_loader
 
+
 def load_seeds(
-        seeds:str, 
-        runs:int
+        seeds: str,
+        runs: int
 ) -> list[int]:
     if runs <= 0:
         return []
@@ -60,3 +66,41 @@ def load_seeds(
         seed_path.write_text(" ".join(str(seed) for seed in seed_values) + "\n")
 
     return seed_values[:runs]
+
+
+def resolve_seeds(
+        runs: int,
+        seed_mode: str = "auto",
+        seeds_path: Optional[str] = None,
+        seed_base: int = 20260320,
+        allow_duplicate_seeds: bool = False,
+) -> list[int]:
+    if runs <= 0:
+        return []
+
+    if seed_mode not in {"auto", "file"}:
+        raise ValueError("seed_mode must be 'auto' or 'file'.")
+
+    if seed_mode == "file":
+        if seeds_path is None:
+            raise ValueError("seeds_path is required when seed_mode='file'.")
+        seed_values = load_seeds(seeds_path, runs)
+        if (not allow_duplicate_seeds) and (len(set(seed_values)) != len(seed_values)):
+            raise ValueError(
+                "Duplicate seeds detected in file mode. "
+                "Set allow_duplicate_seeds=true only when intentionally replaying duplicate seeds."
+            )
+        return seed_values
+
+    # Deterministic unique seed generation for reproducible multi-run stats.
+    # We use a reproducible PRNG stream seeded by seed_base and probe until unique.
+    rng = np.random.default_rng(seed_base)
+    generated: list[int] = []
+    used = set()
+    while len(generated) < runs:
+        candidate = int(rng.integers(1, 2**31 - 1))
+        if candidate in used:
+            continue
+        used.add(candidate)
+        generated.append(candidate)
+    return generated

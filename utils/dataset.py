@@ -5,16 +5,30 @@ from typing import Optional
 
 TU_DATASET = ["MUTAG", "PROTEINS", "ENZYMES", "FRANKENSTEIN", "Mutagenicity", "AIDS", "DD", "NCI1", "COX2"]
 
-def load_dataset(dataset:str) -> Dataset:
+
+def load_dataset(dataset: str) -> Dataset:
     _dataset = None
-    if dataset in TU_DATASET: _dataset = TUDataset(root="/tmp/TUDataset", name=dataset, use_node_attr=True)
+    if dataset in TU_DATASET:
+        _dataset = TUDataset(root="/tmp/TUDataset", name=dataset, use_node_attr=True)
     return _dataset
 
+
+def build_dataset_id(dataset_name: str, dataset: Dataset) -> dict:
+    total_nodes = int(getattr(dataset._data, "num_nodes", 0)) if hasattr(dataset, "_data") else 0
+    return {
+        "name": dataset_name,
+        "num_graphs": len(dataset),
+        "num_node_features": int(dataset.num_node_features),
+        "num_classes": int(dataset.num_classes),
+        "total_nodes": total_nodes,
+    }
+
+
 def build_split_indices(
-        dataset_size:int,
-        seed:int,
-        train_ratio:float=0.8,
-        val_ratio:float=0.1,
+        dataset_size: int,
+        seed: int,
+        train_ratio: float = 0.8,
+        val_ratio: float = 0.1,
 ) -> dict:
     if dataset_size <= 0:
         raise ValueError("dataset_size must be positive")
@@ -37,11 +51,11 @@ def build_split_indices(
 
 
 def split_dataset(
-        dataset:Dataset,
-        seed:Optional[int]=None,
-        split_indices:Optional[dict]=None,
-        train_ratio:float=0.8,
-        val_ratio:float=0.1,
+        dataset: Dataset,
+        seed: Optional[int] = None,
+        split_indices: Optional[dict] = None,
+        train_ratio: float = 0.8,
+        val_ratio: float = 0.1,
 ):
     if split_indices is None:
         if seed is None:
