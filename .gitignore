@@ -1,5 +1,6 @@
 # log directory
 logs/
+runs/
 # editor settings
 .vscode/
 # Byte-compiled / optimized / DLL files
@@ -169,8 +170,6 @@ cython_debug/
 research.md
 
 # local planning notes
-plan.md
+*plan*.md
 
-subplanA.md
-
-subplanC.md
+prospec.md
