@@ -7,6 +7,25 @@ from torch_geometric.loader import DataLoader
 from typing import Optional
 
 
+def configure_runtime_threads():
+    # Trade-off choice for this project:
+    # 1) keep CPU-side scheduling deterministic enough for repeated runs,
+    # 2) avoid large training-time penalty on small TU datasets.
+    # For TU datasets, setting threads/workers low usually has limited throughput impact.
+    torch.set_num_threads(1)
+    try:
+        torch.set_num_interop_threads(1)
+    except RuntimeError:
+        # set_num_interop_threads may be locked once thread pools are initialized.
+        pass
+
+    # If stricter determinism is required later, consider enabling:
+    # torch.use_deterministic_algorithms(True)
+    # torch.backends.cuda.matmul.allow_tf32 = False
+    # torch.backends.cudnn.allow_tf32 = False
+    # and setting env var CUBLAS_WORKSPACE_CONFIG=:4096:8 before launching Python.
+
+
 def set_np_and_torch(seed: int = 0):
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -36,6 +55,7 @@ def generate_loader(
         dataset=dataset,
         batch_size=batch_size,
         shuffle=shuffle,
+        num_workers=0,
         worker_init_fn=seed_worker,
         generator=g,
     )

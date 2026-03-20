@@ -5,7 +5,6 @@ import numpy as np
 
 app = typer.Typer(pretty_exceptions_enable=False)
 REQUIRED_REPRO_FIELDS = [
-    "version",
     "seed_mode",
     "seeds",
     "split_digest",
@@ -50,7 +49,7 @@ def _read_default(record: dict):
 def _read_repro(record: dict):
     repro = record.get("repro")
     if repro is None:
-        raise ValueError("Record missing top-level 'repro'. Non-v2 logs are no longer supported.")
+        raise ValueError("Record missing top-level 'repro'.")
 
     missing = [field for field in REQUIRED_REPRO_FIELDS if field not in repro]
     if missing:
@@ -58,7 +57,6 @@ def _read_repro(record: dict):
 
     return {
         "repro_status": "ok",
-        "repro_version": repro["version"],
         "seed_mode": repro["seed_mode"],
         "seed_base": repro.get("seed_base"),
         "seeds": repro["seeds"],
@@ -92,8 +90,8 @@ def main(
         dataset: Annotated[Optional[str], typer.Option()] = None,
         comment: Annotated[Optional[str], typer.Option()] = None,
         epoch: Annotated[Optional[bool], typer.Option()] = False,
-        show_repro: Annotated[Optional[bool], typer.Option(help="Show reproducibility block fields.")] = False,
-        verify_repro: Annotated[Optional[bool], typer.Option(help="Verify reproducibility block completeness.")] = False,
+        show_repro: Annotated[Optional[bool], typer.Option(help="Show reproducibility fields.")] = False,
+        verify_repro: Annotated[Optional[bool], typer.Option(help="Verify reproducibility field completeness.")] = False,
 ):
     records = _load_jsonstream(file)
     if dataset is not None:

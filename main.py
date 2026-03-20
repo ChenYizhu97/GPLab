@@ -4,6 +4,7 @@ import typer
 import torch
 import numpy as np
 import hashlib
+from decimal import Decimal
 from pathlib import Path
 from rich import print as rprint
 from tqdm import tqdm
@@ -14,22 +15,17 @@ from model.Classifer_Sum import GRAPH_CLASSIFIER_SUM
 from layers.resolver import list_builtin_pools
 from utils.io import print_expr_info, sep_c, build_runtime_meta
 from utils.dataset import load_dataset, split_dataset, build_split_indices, build_dataset_id
-from utils.reproducibility import resolve_seeds, generate_loader, set_np_and_torch
+from utils.reproducibility import (
+    resolve_seeds,
+    generate_loader,
+    set_np_and_torch,
+    configure_runtime_threads,
+)
 from training import train, test
 from typing_extensions import Annotated, Optional
 
 TU_DATASET = ["MUTAG", "PROTEINS", "ENZYMES", "FRANKENSTEIN", "Mutagenicity", "AIDS", "DD", "NCI1", "COX2"]
 POOLING = list_builtin_pools()
-REPRO_VERSION = "v2"
-REQUIRED_REPRO_FIELDS = [
-    "version",
-    "seed_mode",
-    "seeds",
-    "split_digest",
-    "split_ratio",
-    "dataset_id",
-    "env",
-]
 
 app = typer.Typer(pretty_exceptions_enable=False)
 
@@ -52,35 +48,9 @@ def _validate_cli_options(dataset: str, pooling: str, pool_ratio: float) -> bool
     return is_custom_pool
 
 
-def _parse_replay_target(replay_from_log: str) -> tuple[Path, int]:
-    path_str = replay_from_log
-    line_no = 1
-    if ":" in replay_from_log:
-        maybe_path, maybe_line = replay_from_log.rsplit(":", 1)
-        if maybe_line.isdigit():
-            path_str = maybe_path
-            line_no = int(maybe_line)
-    if line_no <= 0:
-        raise ValueError("Replay line must be a positive integer.")
-
-    log_path = Path(path_str)
-    if not log_path.exists():
-        raise ValueError(f"Replay log file not found: {log_path}")
-    return log_path, line_no
-
-
-def _load_log_record(replay_from_log: str) -> dict:
-    log_path, line_no = _parse_replay_target(replay_from_log)
-    with open(log_path, "r", encoding="utf-8") as f:
-        for idx, line in enumerate(f, start=1):
-            if idx == line_no:
-                return json.loads(line)
-    raise ValueError(f"Replay target line {line_no} is out of range for {log_path}.")
-
-
 def _build_repro_block(conf: dict, seed_mode: str, seed_base: Optional[int], dataset_id: dict) -> dict:
+    # Minimal reproducibility payload without schema/version branching.
     return {
-        "version": REPRO_VERSION,
         "seed_mode": seed_mode,
         "seed_base": seed_base,
         "seeds": conf["experiment"]["seeds"],
@@ -89,54 +59,6 @@ def _build_repro_block(conf: dict, seed_mode: str, seed_base: Optional[int], dat
         "dataset_id": dataset_id,
         "env": conf["meta"],
     }
-
-
-def _build_replay_expectation(record: dict) -> dict:
-    repro = record.get("repro")
-    if repro is None:
-        raise ValueError("Replay requires a v2 log record containing top-level 'repro'.")
-
-    missing = [field for field in REQUIRED_REPRO_FIELDS if field not in repro]
-    if missing:
-        raise ValueError(f"Replay record has incomplete repro fields: {missing}")
-
-    return {
-        "seeds": repro["seeds"],
-        "split_digest": repro["split_digest"],
-        "split_ratio": repro["split_ratio"],
-        "statistic": record.get("results", {}).get("statistic", {}),
-    }
-
-
-def _print_replay_checks(conf: dict, expected: dict, stat_tolerance: float = 1e-3):
-    actual_exp = conf["experiment"]
-    actual_stat = conf["results"]["statistic"]
-
-    hard_checks = {
-        "split_digest_match": actual_exp["split_digest"] == expected["split_digest"],
-        "seed_list_match": actual_exp["seeds"] == expected["seeds"],
-        "run_count_match": len(actual_exp["seeds"]) == len(expected["seeds"]),
-        "split_ratio_match": actual_exp["split_ratio"] == expected["split_ratio"],
-    }
-
-    expected_mean = expected.get("statistic", {}).get("mean")
-    expected_std = expected.get("statistic", {}).get("std")
-    mean_diff = None if expected_mean is None else abs(actual_stat["mean"] - expected_mean)
-    std_diff = None if expected_std is None else abs(actual_stat["std"] - expected_std)
-
-    rprint(sep_c("="))
-    rprint("[bold]Replay verification[/bold]")
-    for key, ok in hard_checks.items():
-        color = "green" if ok else "red"
-        rprint(f"[{color}]{key}: {ok}[/{color}]")
-
-    if mean_diff is not None and std_diff is not None:
-        mean_warn = mean_diff > stat_tolerance
-        std_warn = std_diff > stat_tolerance
-        color_mean = "yellow" if mean_warn else "green"
-        color_std = "yellow" if std_warn else "green"
-        rprint(f"[{color_mean}]mean_diff={mean_diff:.6f} (tol={stat_tolerance})[/{color_mean}]")
-        rprint(f"[{color_std}]std_diff={std_diff:.6f} (tol={stat_tolerance})[/{color_std}]")
 
 
 def _run_experiment(
@@ -150,8 +72,6 @@ def _run_experiment(
         seed_mode: str,
         seed_base: Optional[int],
         allow_duplicate_seeds: bool,
-        forced_seeds: Optional[list[int]] = None,
-        replay_expected: Optional[dict] = None,
 ) -> dict:
     is_custom_pool = _validate_cli_options(dataset_name, pooling, pool_ratio)
 
@@ -190,6 +110,7 @@ def _run_experiment(
     if comment is not None:
         conf["comment"] = comment
 
+    configure_runtime_threads()
     set_np_and_torch(0)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     conf["meta"] = build_runtime_meta(device)
@@ -218,16 +139,13 @@ def _run_experiment(
 
     rprint(summary(model, data=dataset[0].to(device), leaf_module=None, max_depth=5))
 
-    if forced_seeds is not None:
-        seeds = forced_seeds
-    else:
-        seeds = resolve_seeds(
-            runs=expr_conf["runs"],
-            seed_mode=seed_mode,
-            seeds_path=expr_conf.get("seeds"),
-            seed_base=seed_base if seed_base is not None else 20260320,
-            allow_duplicate_seeds=allow_duplicate_seeds,
-        )
+    seeds = resolve_seeds(
+        runs=expr_conf["runs"],
+        seed_mode=seed_mode,
+        seeds_path=expr_conf.get("seeds"),
+        seed_base=seed_base if seed_base is not None else 20260320,
+        allow_duplicate_seeds=allow_duplicate_seeds,
+    )
     conf["experiment"]["seeds"] = seeds
 
     split_indices_all = [
@@ -235,11 +153,14 @@ def _run_experiment(
         for seed in seeds
     ]
     split_digest = hashlib.sha1(json.dumps(split_indices_all, sort_keys=True).encode("utf-8")).hexdigest()
+    train_ratio_dec = Decimal(str(train_ratio))
+    val_ratio_dec = Decimal(str(val_ratio))
+    test_ratio_dec = Decimal("1") - train_ratio_dec - val_ratio_dec
     conf["experiment"]["split_digest"] = split_digest
     conf["experiment"]["split_ratio"] = {
-        "train": train_ratio,
-        "val": val_ratio,
-        "test": 1 - train_ratio - val_ratio,
+        "train": float(train_ratio_dec),
+        "val": float(val_ratio_dec),
+        "test": float(test_ratio_dec),
     }
 
     loss_list = []
@@ -310,11 +231,12 @@ def _run_experiment(
         "statistic": {"mean": acc_mean, "std": acc_std},
         "data": {"val_loss": loss_list, "test_acc": acc_list, "epochs_stop": epoch_list, "runs": run_records},
     }
-
-    conf["repro"] = _build_repro_block(conf, seed_mode=seed_mode, seed_base=seed_base, dataset_id=build_dataset_id(dataset_name, dataset))
-
-    if replay_expected is not None:
-        _print_replay_checks(conf, replay_expected)
+    conf["repro"] = _build_repro_block(
+        conf,
+        seed_mode=seed_mode,
+        seed_base=seed_base,
+        dataset_id=build_dataset_id(dataset_name, dataset),
+    )
 
     if logging is not None:
         log_path = Path(logging)
@@ -337,32 +259,7 @@ def main(
         seed_mode: Annotated[Optional[str], typer.Option(help="Seed source mode: auto or file.")] = None,
         seed_base: Annotated[Optional[int], typer.Option(help="Base integer for deterministic seed generation in auto mode.")] = None,
         allow_duplicate_seeds: Annotated[Optional[bool], typer.Option(help="Allow duplicate seeds in file mode.")] = None,
-        replay_from_log: Annotated[Optional[str], typer.Option(help="Replay from one JSONL record: <file> or <file>:<line>. Requires repro v2 fields.")] = None,
 ):
-    if replay_from_log is not None:
-        record = _load_log_record(replay_from_log)
-        replay_expected = _build_replay_expectation(record)
-
-        mode_conf = {"model": record["model"]}
-        record_experiment = dict(record["experiment"])
-        record_repro = record["repro"]
-
-        _run_experiment(
-            mode_conf=mode_conf,
-            expr_conf_dict={"experiment": record_experiment},
-            pooling=record["pool"]["method"],
-            pool_ratio=float(record["pool"]["ratio"]),
-            dataset_name=record["dataset"],
-            logging=logging,
-            comment=comment if comment is not None else record.get("comment"),
-            seed_mode=record_repro["seed_mode"],
-            seed_base=record_repro.get("seed_base"),
-            allow_duplicate_seeds=False,
-            forced_seeds=replay_expected["seeds"],
-            replay_expected=replay_expected,
-        )
-        return
-
     mode_conf = toml.load(model_conf)
     expr_conf_data = toml.load(expr_conf)
 
@@ -387,4 +284,3 @@ def main(
 
 if __name__ == "__main__":
     app()
-
