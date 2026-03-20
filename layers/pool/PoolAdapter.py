@@ -8,6 +8,9 @@ from ..functional import dense_connect
 from typing_extensions import Union
 from torch_geometric.nn.resolver import activation_resolver
 
+from .contracts import PoolOutput
+
+
 class PoolAdapter(torch.nn.Module):
     def __init__(
             self, 
@@ -29,12 +32,27 @@ class PoolAdapter(torch.nn.Module):
             x: Tensor,
             edge_index: Tensor,
             batch: Tensor
-    ):
+    ) -> PoolOutput:
+        """
+        Dense pooling adapter following GPLab's unified benchmark protocol.
+        
+        Dense pooling outputs are converted back to sparse tensors so all pooling
+        methods can share one downstream sparse backbone.
+        
+        Args:
+            x: Node features, shape [N, F]
+            edge_index: Edge indices, shape [2, E]
+            batch: Batch vector, shape [N]
+            
+        Returns:
+            PoolOutput with pooled graph in sparse format
+        """
         # NOTE: This adapter intentionally follows GPLab's unified benchmark protocol:
         # dense pooling outputs are converted back to sparse tensors so all pooling methods
         # can share one downstream sparse backbone. Paper-style dense-only backbones are
         # intentionally not handled here for now.
         x, mask, adj = self._pre_pool(x, edge_index, batch)
+        
         # pool
         if self.pool_method == "diffpool":
             s = self.pool(x, adj, mask)
@@ -42,17 +60,24 @@ class PoolAdapter(torch.nn.Module):
             s = self.pool(x)
 
         # connect
+        aux_loss = None
         if self.pool_method == "mincutpool":
             x, adj, l1, l2 = dense_mincut_pool(x, adj, s, mask)
-            self.aux_loss = 0.5*l1 + l2
+            aux_loss = 0.5*l1 + l2
         if self.pool_method == "diffpool":
             x, adj, link_loss, ent_loss = dense_diff_pool(x, adj, s, mask)
-            self.aux_loss = 0.1*link_loss + 0.1*ent_loss
+            aux_loss = 0.1*link_loss + 0.1*ent_loss
         if self.pool_method == "densepool":
             x, adj = dense_connect(x, adj, s, mask)
 
         x, edge_index, batch = self._post_pool(x, adj)
-        return x, edge_index, batch, self.aux_loss
+        
+        return PoolOutput(
+            x=x,
+            edge_index=edge_index,
+            batch=batch,
+            aux_loss=aux_loss
+        )
 
     
     def _pre_pool(

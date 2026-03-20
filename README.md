@@ -127,6 +127,43 @@ python3 main.py \
   --dataset PROTEINS
 ```
 
+### Plugin Output Contract
+
+All custom pooling layers **must** return a `PoolOutput` dataclass from `forward()`:
+
+```python
+from layers.pool.contracts import PoolOutput
+
+class MyCustomPool(torch.nn.Module):
+    def forward(self, x, edge_index, batch):
+        # Your pooling logic
+        ...
+        return PoolOutput(
+            x=x_pooled,              # Required: node features [N_pooled, F]
+            edge_index=edge_index_pooled,  # Required: edges [2, E_pooled]
+            batch=batch_pooled,      # Required: batch vector [N_pooled]
+            edge_attr=None,          # Optional: edge features
+            perm=None,               # Optional: selected indices
+            score=None,              # Optional: selection scores
+            aux_loss=None,           # Optional: scalar auxiliary loss
+        )
+```
+
+**Required fields:**
+- `x`: Pooled node features, shape `[N_pooled, F]`
+- `edge_index`: Pooled edge indices, shape `[2, E_pooled]`
+- `batch`: Batch assignment vector, shape `[N_pooled]`
+
+**Optional fields:**
+- `edge_attr`: Edge features
+- `perm`: Indices of selected nodes in original graph
+- `score`: Node selection scores/weights
+- `aux_loss`: Scalar auxiliary loss (e.g., link prediction loss). Will be added to training loss.
+
+Contract violations are caught on the first batch with clear error messages. See `examples/custom_pool_plugin.py` for a complete example.
+
+### Factory Signature
+
 Recommended factory signature:
 
 ```python

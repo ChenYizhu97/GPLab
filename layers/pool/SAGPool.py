@@ -1,7 +1,7 @@
 """
 This pooling layer is adapted from the pytorch version, because the current pytorch version is slightly inconsistent with the paper, which introduces an extra parameter.
 """
-from typing import Callable, Optional, Tuple, Union
+from typing import Callable, Optional, Union
 import torch
 from torch import Tensor
 from torch_geometric.nn import GraphConv
@@ -11,6 +11,9 @@ from ..functional import topk
 from torch_geometric.nn.resolver import activation_resolver
 from torch_geometric.typing import OptTensor
 from torch_geometric.utils import softmax
+
+from .contracts import PoolOutput
+
 
 class SAGPooling(torch.nn.Module):
     r"""The self-attention pooling operator from the `"Self-Attention Graph
@@ -106,7 +109,7 @@ class SAGPooling(torch.nn.Module):
         edge_attr: OptTensor = None,
         batch: OptTensor = None,
         attn: OptTensor = None,
-    ) -> Tuple[Tensor, Tensor, OptTensor, OptTensor, Tensor, Tensor]:
+    ) -> PoolOutput:
         r"""
         Args:
             x (torch.Tensor): The node feature matrix.
@@ -119,6 +122,9 @@ class SAGPooling(torch.nn.Module):
             attn (torch.Tensor, optional): Optional node-level matrix to use
                 for computing attention scores instead of using the node
                 feature matrix :obj:`x`. (default: :obj:`None`)
+                
+        Returns:
+            PoolOutput with pooled graph structure
         """
         if batch is None:
             batch = edge_index.new_zeros(x.size(0))
@@ -138,8 +144,14 @@ class SAGPooling(torch.nn.Module):
 
         connect_out = self.connect(select_out, edge_index, edge_attr, batch)
 
-        return (x, connect_out.edge_index, connect_out.edge_attr,
-                connect_out.batch, perm, score)
+        return PoolOutput(
+            x=x,
+            edge_index=connect_out.edge_index,
+            batch=connect_out.batch,
+            edge_attr=connect_out.edge_attr,
+            perm=perm,
+            score=score,
+        )
 
     def __repr__(self) -> str:
         if self.min_score is None:
