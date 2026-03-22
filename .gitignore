@@ -173,3 +173,8 @@ research.md
 *plan*.md
 
 prospec.md
+
+# benchmark scripts
+check_*.sh
+resume_*.sh
+run_*.sh

@@ -12,6 +12,7 @@ import torch.nn.functional as F
 from torch_geometric.nn import summary
 from torcheval.metrics import MulticlassAccuracy, Mean
 from model.Classifer_Sum import GRAPH_CLASSIFIER_SUM
+from model.Classifer_plain import GRAPH_CLASSIFIER_PLAIN
 from layers.resolver import list_builtin_pools
 from utils.io import print_expr_info, sep_c, build_runtime_meta
 from utils.dataset import load_dataset, split_dataset, build_split_indices, build_dataset_id
@@ -72,6 +73,7 @@ def _run_experiment(
         seed_mode: str,
         seed_base: Optional[int],
         allow_duplicate_seeds: bool,
+        model_type: str = "sum",
 ) -> dict:
     is_custom_pool = _validate_cli_options(dataset_name, pooling, pool_ratio)
 
@@ -128,7 +130,8 @@ def _run_experiment(
         "acc": MulticlassAccuracy(average="micro", device=device, num_classes=dataset.num_classes),
     }
 
-    model = GRAPH_CLASSIFIER_SUM(
+    ModelClass = GRAPH_CLASSIFIER_PLAIN if model_type == "plain" else GRAPH_CLASSIFIER_SUM
+    model = ModelClass(
         dataset.num_node_features,
         dataset.num_classes,
         pool_method=pooling,
@@ -252,6 +255,7 @@ def main(
         pooling: Annotated[str, typer.Option()] = "nopool",
         pool_ratio: Annotated[float, typer.Option(help="Pooling ratio for built-in or custom pooling methods.")] = 0.5,
         dataset: Annotated[str, typer.Option()] = "PROTEINS",
+        model_type: Annotated[str, typer.Option(help="Model type: sum or plain.")] = "sum",
         logging: Annotated[Optional[str], typer.Option()] = None,
         model_conf: Annotated[str, typer.Option()] = "config/model.toml",
         expr_conf: Annotated[str, typer.Option()] = "config/experiment.toml",
@@ -279,6 +283,7 @@ def main(
         seed_mode=final_seed_mode,
         seed_base=final_seed_base,
         allow_duplicate_seeds=final_allow_dup,
+        model_type=model_type,
     )
 
 
