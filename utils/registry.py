@@ -1,0 +1,22 @@
+TU_DATASETS = (
+    "MUTAG",
+    "PROTEINS",
+    "ENZYMES",
+    "FRANKENSTEIN",
+    "Mutagenicity",
+    "AIDS",
+    "DD",
+    "NCI1",
+    "COX2",
+)
+
+BUILTIN_POOLS = (
+    "nopool",
+    "topkpool",
+    "sagpool",
+    "asapool",
+    "sparsepool",
+    "mincutpool",
+    "diffpool",
+    "densepool",
+)

@@ -5,17 +5,7 @@ from torch.nn import Linear
 from torch_geometric.nn import GraphConv, GCNConv, DenseGCNConv, GINConv
 from torch_geometric.nn.pool import TopKPooling, ASAPooling
 from .pool import SAGPooling, SparsePooling, PoolAdapter, PoolOutput
-
-BUILTIN_POOLS = (
-    "nopool",
-    "topkpool",
-    "sagpool",
-    "asapool",
-    "sparsepool",
-    "mincutpool",
-    "diffpool",
-    "densepool",
-)
+from utils.registry import BUILTIN_POOLS
 
 
 def conv_resolver(layer:str) -> Optional[torch.nn.Module]:

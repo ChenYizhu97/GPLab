@@ -5,7 +5,6 @@ import torch
 import numpy as np
 import hashlib
 from decimal import Decimal
-from pathlib import Path
 from rich import print as rprint
 from tqdm import tqdm
 import torch.nn.functional as F
@@ -13,7 +12,6 @@ from torch_geometric.nn import summary
 from torcheval.metrics import MulticlassAccuracy, Mean
 from model.Classifer_Sum import GRAPH_CLASSIFIER_SUM
 from model.Classifer_plain import GRAPH_CLASSIFIER_PLAIN
-from layers.resolver import list_builtin_pools
 from utils.io import print_expr_info, sep_c, build_runtime_meta
 from utils.dataset import load_dataset, split_dataset, build_split_indices, build_dataset_id
 from utils.reproducibility import (
@@ -22,32 +20,18 @@ from utils.reproducibility import (
     set_np_and_torch,
     configure_runtime_threads,
 )
+from utils.cli import (
+    validate_dataset,
+    validate_pool,
+    validate_pool_ratio,
+    validate_model_type,
+    resolve_seed_options,
+)
+from utils.jsonl import append_jsonl
 from training import train, test
 from typing_extensions import Annotated, Optional
 
-TU_DATASET = ["MUTAG", "PROTEINS", "ENZYMES", "FRANKENSTEIN", "Mutagenicity", "AIDS", "DD", "NCI1", "COX2"]
-POOLING = list_builtin_pools()
-
 app = typer.Typer(pretty_exceptions_enable=False)
-
-
-def _validate_cli_options(dataset: str, pooling: str, pool_ratio: float) -> bool:
-    if dataset not in TU_DATASET:
-        raise typer.BadParameter(
-            f"Unsupported dataset '{dataset}'. Supported datasets: {', '.join(TU_DATASET)}",
-            param_hint="--dataset",
-        )
-    if pool_ratio <= 0.0 or pool_ratio > 1.0:
-        raise typer.BadParameter("pool_ratio must be in (0, 1].", param_hint="--pool-ratio")
-
-    is_custom_pool = ":" in pooling
-    if not is_custom_pool and pooling not in POOLING:
-        raise typer.BadParameter(
-            f"Unknown pooling method '{pooling}'. Built-ins: {', '.join(POOLING)}",
-            param_hint="--pooling",
-        )
-    return is_custom_pool
-
 
 def _build_repro_block(conf: dict, seed_mode: str, seed_base: Optional[int], dataset_id: dict) -> dict:
     # Minimal reproducibility payload without schema/version branching.
@@ -65,17 +49,20 @@ def _build_repro_block(conf: dict, seed_mode: str, seed_base: Optional[int], dat
 def _run_experiment(
         mode_conf: dict,
         expr_conf_dict: dict,
-        pooling: str,
+        pool: str,
         pool_ratio: float,
         dataset_name: str,
-        logging: Optional[str],
+        log_file: Optional[str],
         comment: Optional[str],
         seed_mode: str,
         seed_base: Optional[int],
         allow_duplicate_seeds: bool,
         model_type: str = "sum",
 ) -> dict:
-    is_custom_pool = _validate_cli_options(dataset_name, pooling, pool_ratio)
+    validate_dataset(dataset_name)
+    validate_pool_ratio(pool_ratio)
+    validate_model_type(model_type)
+    is_custom_pool = validate_pool(pool)
 
     if "model" not in mode_conf:
         raise ValueError("Missing [model] section in model config")
@@ -83,7 +70,7 @@ def _run_experiment(
         raise ValueError("Missing [experiment] section in experiment config")
 
     pool_conf = dict(
-        method=pooling,
+        method=pool,
         ratio=pool_ratio,
         source="custom_factory" if is_custom_pool else "builtin",
         protocol="unified_adapter",
@@ -134,7 +121,7 @@ def _run_experiment(
     model = ModelClass(
         dataset.num_node_features,
         dataset.num_classes,
-        pool_method=pooling,
+        pool_method=pool,
         ratio=pool_ratio,
         config=conf["model"],
         avg_node_num=avg_node_num,
@@ -241,44 +228,44 @@ def _run_experiment(
         dataset_id=build_dataset_id(dataset_name, dataset),
     )
 
-    if logging is not None:
-        log_path = Path(logging)
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(log_path, "a+", encoding="utf-8") as file_to_save:
-            print(json.dumps(conf), file=file_to_save)
+    if log_file is not None:
+        append_jsonl(log_file, conf)
 
     return conf
 
 
 @app.command()
 def main(
-        pooling: Annotated[str, typer.Option()] = "nopool",
+        pool: Annotated[str, typer.Option(help="Pooling method name or <module:factory> for custom pooling.")] = "nopool",
         pool_ratio: Annotated[float, typer.Option(help="Pooling ratio for built-in or custom pooling methods.")] = 0.5,
         dataset: Annotated[str, typer.Option()] = "PROTEINS",
         model_type: Annotated[str, typer.Option(help="Model type: sum or plain.")] = "sum",
-        logging: Annotated[Optional[str], typer.Option()] = None,
-        model_conf: Annotated[str, typer.Option()] = "config/model.toml",
-        expr_conf: Annotated[str, typer.Option()] = "config/experiment.toml",
+        log_file: Annotated[Optional[str], typer.Option(help="JSONL file path to append experiment records.")] = None,
+        model_config: Annotated[str, typer.Option()] = "config/model.toml",
+        experiment_config: Annotated[str, typer.Option()] = "config/experiment.toml",
         comment: Annotated[Optional[str], typer.Option()] = None,
         seed_mode: Annotated[Optional[str], typer.Option(help="Seed source mode: auto or file.")] = None,
         seed_base: Annotated[Optional[int], typer.Option(help="Base integer for deterministic seed generation in auto mode.")] = None,
         allow_duplicate_seeds: Annotated[Optional[bool], typer.Option(help="Allow duplicate seeds in file mode.")] = None,
 ):
-    mode_conf = toml.load(model_conf)
-    expr_conf_data = toml.load(expr_conf)
+    mode_conf = toml.load(model_config)
+    expr_conf_data = toml.load(experiment_config)
 
     exp = expr_conf_data.get("experiment", {})
-    final_seed_mode = seed_mode if seed_mode is not None else exp.get("seed_mode", "auto")
-    final_seed_base = seed_base if seed_base is not None else exp.get("seed_base", 20260320)
-    final_allow_dup = allow_duplicate_seeds if allow_duplicate_seeds is not None else exp.get("allow_duplicate_seeds", False)
+    final_seed_mode, final_seed_base, final_allow_dup = resolve_seed_options(
+        seed_mode=seed_mode,
+        seed_base=seed_base,
+        allow_duplicate_seeds=allow_duplicate_seeds,
+        expr_conf=exp,
+    )
 
     _run_experiment(
         mode_conf=mode_conf,
         expr_conf_dict=expr_conf_data,
-        pooling=pooling,
+        pool=pool,
         pool_ratio=pool_ratio,
         dataset_name=dataset,
-        logging=logging,
+        log_file=log_file,
         comment=comment,
         seed_mode=final_seed_mode,
         seed_base=final_seed_base,

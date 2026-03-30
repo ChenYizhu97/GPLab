@@ -9,6 +9,6 @@ for dataset in  "PROTEINS" "ENZYMES"  "Mutagenicity" "DD" "NCI1" "COX2"
 do
     for pool in "sparsepool"
         do
-        python3 main.py  --logging $log$file --pooling $pool --dataset $dataset --comment "batch norm all. v6. A3. graphconv collapse for new x before diff and score."
+        python3 main.py  --log-file $log$file --pool $pool --dataset $dataset --comment "batch norm all. v6. A3. graphconv collapse for new x before diff and score."
         done
 done

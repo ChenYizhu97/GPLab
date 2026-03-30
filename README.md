@@ -85,17 +85,17 @@ pip install torch torch-geometric torcheval typer toml rich tqdm numpy
 Run one experiment:
 
 ```bash
-python3 main.py --pooling sagpool --pool-ratio 0.5 --dataset PROTEINS
+python3 main.py --pool sagpool --pool-ratio 0.5 --dataset PROTEINS
 ```
 
 Append result to JSONL:
 
 ```bash
 python3 main.py \
-  --pooling sagpool \
+  --pool sagpool \
   --pool-ratio 0.5 \
   --dataset PROTEINS \
-  --logging runs/tu_pooling.jsonl
+  --log-file runs/tu_pooling.jsonl
 ```
 
 Batch script example:
@@ -122,7 +122,7 @@ You can pass a factory path in `<python_module>:<factory_name>` format:
 
 ```bash
 python3 main.py \
-  --pooling examples.custom_pool_plugin:build_pool \
+  --pool examples.custom_pool_plugin:build_pool \
   --pool-ratio 0.6 \
   --dataset PROTEINS
 ```
@@ -219,21 +219,21 @@ GPLab tracks reproducibility at multiple levels:
 
 ```bash
 python3 main.py \
-  --pooling sparsepool \
+  --pool sparsepool \
   --dataset PROTEINS \
-  --logging runs/bench.jsonl \
+  --log-file runs/bench.jsonl \
   --comment "purpose=baseline;date=2026-03-20"
 ```
 
 2. Query and check summary fields:
 
 ```bash
-python3 querry.py runs/bench.jsonl --pool sparsepool --dataset PROTEINS --epoch
+python3 querry.py --log-file runs/bench.jsonl --pool sparsepool --dataset PROTEINS --epoch
 ```
 
 ## Logged Record Schema
 
-Each `main.py` run emits one JSON object. With `--logging`, objects are appended as JSONL.
+Each `main.py` run emits one JSON object. With `--log-file`, objects are appended as JSONL.
 
 Main fields:
 - `model`
@@ -251,14 +251,14 @@ Main fields:
 Use `querry.py` to filter logs by pool, dataset, and comment:
 
 ```bash
-python3 querry.py runs/tu_pooling.jsonl --pool sagpool --dataset PROTEINS --epoch
+python3 querry.py --log-file runs/tu_pooling.jsonl --pool sagpool --dataset PROTEINS --epoch
 ```
 
 Reproducibility inspection:
 
 ```bash
-python3 querry.py runs/tu_pooling.jsonl --show-repro
-python3 querry.py runs/tu_pooling.jsonl --verify-repro
+python3 querry.py --log-file runs/tu_pooling.jsonl --show-repro
+python3 querry.py --log-file runs/tu_pooling.jsonl --verify-repro
 ```
 
 ## Minimal Benchmark Template
@@ -267,10 +267,10 @@ Recommended template for pooled benchmark batches:
 
 ```bash
 python3 main.py \
-  --pooling sparsepool \
+  --pool sparsepool \
   --pool-ratio 0.5 \
   --dataset PROTEINS \
-  --logging runs/bench_proteins.jsonl \
+  --log-file runs/bench_proteins.jsonl \
   --comment "purpose=pooling_benchmark;date=2026-03-20"
 ```
 

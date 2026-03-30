@@ -4,7 +4,7 @@ This example demonstrates the PoolOutput contract for custom pooling plugins.
 All custom pooling methods must return a PoolOutput instance from forward().
 
 Usage:
-    python3 main.py --pooling examples.custom_pool_plugin:build_pool --pool-ratio 0.6
+    python3 main.py --pool examples.custom_pool_plugin:build_pool --pool-ratio 0.6
 """
 
 import torch

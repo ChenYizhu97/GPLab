@@ -2,13 +2,12 @@ from torch_geometric.datasets import TUDataset
 import numpy as np
 from torch_geometric.data import Dataset
 from typing import Optional
-
-TU_DATASET = ["MUTAG", "PROTEINS", "ENZYMES", "FRANKENSTEIN", "Mutagenicity", "AIDS", "DD", "NCI1", "COX2"]
+from utils.registry import TU_DATASETS
 
 
 def load_dataset(dataset: str) -> Dataset:
     _dataset = None
-    if dataset in TU_DATASET:
+    if dataset in TU_DATASETS:
         _dataset = TUDataset(root="/tmp/TUDataset", name=dataset, use_node_attr=True)
     return _dataset
 
