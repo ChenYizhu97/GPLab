@@ -47,9 +47,14 @@ class _TopKPoolWrapper(torch.nn.Module):
     
     PyG TopKPooling returns: (x, edge_index, edge_attr, batch, perm, score)
     """
-    def __init__(self, in_channels: int, ratio: float = 0.5):
+    def __init__(
+        self,
+        in_channels: int,
+        ratio: float = 0.5,
+        nonlinearity: Union[str, callable] = "tanh",
+    ):
         super().__init__()
-        self.pool = TopKPooling(in_channels, ratio=ratio)
+        self.pool = TopKPooling(in_channels, ratio=ratio, nonlinearity=nonlinearity)
     
     def forward(self, x, edge_index, batch):
         x_out, edge_index_out, edge_attr_out, batch_out, perm, score = self.pool(
@@ -117,26 +122,26 @@ def pool_resolver(pool:str, in_channels:int, ratio:float=0.5, avg_node_num:Optio
         return None
 
     if pool == "topkpool":
-        return _TopKPoolWrapper(in_channels, ratio=ratio)
+        return _TopKPoolWrapper(in_channels, ratio=ratio, nonlinearity=nonlinearity)
     
     if pool == "sagpool":
         # SAGPooling already returns PoolOutput
-        return SAGPooling(in_channels, ratio=ratio)
+        return SAGPooling(in_channels, ratio=ratio, nonlinearity=nonlinearity)
     
     if pool == "asapool":
         return _ASAPoolWrapper(in_channels, ratio=ratio)
     
     if pool == "sparsepool":
         # SparsePooling already returns PoolOutput
-        return SparsePooling(in_channels, ratio=ratio)
+        return SparsePooling(in_channels, ratio=ratio, act=nonlinearity)
 
     if pool in ("mincutpool", "diffpool", "densepool"):
         k = _dense_cluster_size(avg_node_num, ratio)
         if pool == "mincutpool":
-            return PoolAdapter(Linear(in_channels, k), pool)
+            return PoolAdapter(Linear(in_channels, k), pool, nonlinearity=nonlinearity)
         if pool == "diffpool":
-            return PoolAdapter(DenseGCNConv(in_channels, k), pool)
-        return PoolAdapter(Linear(in_channels, k), pool)
+            return PoolAdapter(DenseGCNConv(in_channels, k), pool, nonlinearity=nonlinearity)
+        return PoolAdapter(Linear(in_channels, k), pool, nonlinearity=nonlinearity)
 
     if ":" in pool:
         factory = _load_pool_factory(pool)

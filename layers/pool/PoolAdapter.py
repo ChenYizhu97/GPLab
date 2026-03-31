@@ -2,6 +2,7 @@ from typing import Optional
 
 import torch
 from torch import Tensor
+from torch_geometric.nn.resolver import activation_resolver
 from torch_geometric.nn.dense import dense_diff_pool, dense_mincut_pool
 from torch_geometric.utils import to_dense_adj, to_dense_batch
 
@@ -15,6 +16,7 @@ class PoolAdapter(torch.nn.Module):
         self,
         pool: Optional[torch.nn.Module],
         pool_method: str,
+        nonlinearity="relu",
         *args,
         **kwargs,
     ) -> None:
@@ -24,6 +26,12 @@ class PoolAdapter(torch.nn.Module):
 
         self.pool = pool
         self.pool_method = pool_method
+        # Keep the project-level pooling interface symmetric with sparse poolers
+        # and custom plugins. Dense built-ins currently do not apply this
+        # nonlinearity to assignment logits, because PyG's dense_diff_pool and
+        # dense_mincut_pool internally normalize/consume raw assignment scores.
+        # We still keep the resolved callable for future dense-pooling variants.
+        self.nonlinearity = activation_resolver(nonlinearity)
         self.reset_parameters()
 
     def forward(
