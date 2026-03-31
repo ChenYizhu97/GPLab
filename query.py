@@ -1,7 +1,9 @@
 import shlex
-import typer
-from typing_extensions import Optional, Annotated
+
 import numpy as np
+import typer
+from typing_extensions import Annotated, Optional
+
 from experiment.identity import ensure_record_id
 from utils.cli import validate_dataset, validate_model_type, validate_pool
 from utils.jsonl import read_jsonl
@@ -120,15 +122,15 @@ def _shape_output(
 
 @app.command()
 def main(
-        log_file: Annotated[str, typer.Option(..., help="JSONL log file to query.")],
-        pool: Annotated[Optional[str], typer.Option()] = None,
-        dataset: Annotated[Optional[str], typer.Option()] = None,
-        model_type: Annotated[Optional[str], typer.Option(help="Filter by model variant: sum or plain.")] = None,
-        comment: Annotated[Optional[str], typer.Option()] = None,
-        epoch: Annotated[bool, typer.Option()] = False,
-        show_repro: Annotated[bool, typer.Option(help="Show reproducibility fields.")] = False,
-        verify_repro: Annotated[bool, typer.Option(help="Verify reproducibility field completeness.")] = False,
-        show_replay: Annotated[bool, typer.Option(help="Show replay.py command for each matched record.")] = False,
+    log_file: Annotated[str, typer.Option(..., help="JSONL log file to query.")],
+    pool: Annotated[Optional[str], typer.Option()] = None,
+    dataset: Annotated[Optional[str], typer.Option()] = None,
+    model_type: Annotated[Optional[str], typer.Option(help="Filter by model variant: sum or plain.")] = None,
+    comment: Annotated[Optional[str], typer.Option()] = None,
+    epoch: Annotated[bool, typer.Option()] = False,
+    show_repro: Annotated[bool, typer.Option(help="Show reproducibility fields.")] = False,
+    verify_repro: Annotated[bool, typer.Option(help="Verify reproducibility field completeness.")] = False,
+    show_replay: Annotated[bool, typer.Option(help="Show replay.py command for each matched record.")] = False,
 ):
     if sum((show_repro, verify_repro, show_replay)) > 1:
         raise typer.BadParameter(

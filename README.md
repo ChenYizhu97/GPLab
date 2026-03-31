@@ -39,12 +39,12 @@ GPLab/
     record.py                # result/repro record assembly
     repro.py                 # repro schema and protocol identity helpers
   training.py                # training and evaluation loops
-  querry.py                  # JSONL query tool
+  query.py                   # JSONL query tool
   replay.py                  # replay one JSONL record via temp configs
   model/
     Model.py                 # shared graph classifier backbone
-    Classifer_Sum.py         # sum model variant
-    Classifer_plain.py       # plain model variant
+    classifier_sum.py        # sum model variant
+    classifier_plain.py      # plain model variant
   layers/
     resolver.py              # conv/pool resolver and plugin loading
     functional.py            # readout and pooling helpers
@@ -148,6 +148,10 @@ Run a built-in smoke test across all built-in pools and TU datasets:
 bash utils/smoke_test.sh
 ```
 
+`utils/smoke_test.sh` is a structural regression check. It writes a TSV summary
+to `/tmp/gplab_smoke_results.tsv` by default and does not append JSONL
+experiment records.
+
 To limit the sweep, override `POOLS` or `DATASETS`:
 
 ```bash
@@ -165,23 +169,22 @@ PYTHON_CMD="conda run -n torch_env python3" bash utils/smoke_test.sh
 Query a JSONL log file:
 
 ```bash
-python3 querry.py --log-file runs/bench.jsonl
+python3 query.py --log-file runs/bench.jsonl
 ```
 
 Show the replay command for each matched record:
 
 ```bash
-python3 querry.py --log-file runs/bench.jsonl --show-replay
+python3 query.py --log-file runs/bench.jsonl --show-replay
 ```
 
 Filter by model variant:
 
 ```bash
-python3 querry.py --log-file runs/bench.jsonl --model-type plain
+python3 query.py --log-file runs/bench.jsonl --model-type plain
 ```
 
-`querry.py` reads `model.variant` from each record and defaults missing values to `sum`
-for backward compatibility with older logs.
+`query.py` reads `model.variant` from each record.
 
 ## Reproducing a Logged Run
 
@@ -195,7 +198,7 @@ Each current record includes a `repro` block with:
 Recommended workflow:
 
 ```bash
-python3 querry.py --log-file runs/bench.jsonl --show-replay
+python3 query.py --log-file runs/bench.jsonl --show-replay
 python3 replay.py --log-file runs/bench.jsonl --record-id <record_id>
 python3 replay.py --log-file runs/bench.jsonl --record-id <record_id> --run
 ```
@@ -215,6 +218,11 @@ GPLab currently provides two model variants built on the same shared backbone:
 
 - `sum`: reads out graph representations both before and after pooling, then adds them;
 - `plain`: uses only the post-pooling graph representation.
+
+Concrete model classes:
+
+- `GraphClassifierSum`
+- `GraphClassifierPlain`
 
 Both models share:
 
@@ -383,20 +391,20 @@ Current seed modes:
 
 ## Querying Results
 
-Use `querry.py` to inspect JSONL logs.
+Use `query.py` to inspect JSONL logs.
 
 Examples:
 
 ```bash
-python3 querry.py --log-file runs/bench.jsonl --pool sparsepool --dataset PROTEINS --epoch
+python3 query.py --log-file runs/bench.jsonl --pool sparsepool --dataset PROTEINS --epoch
 ```
 
 ```bash
-python3 querry.py --log-file runs/bench.jsonl --show-repro
+python3 query.py --log-file runs/bench.jsonl --show-repro
 ```
 
 ```bash
-python3 querry.py --log-file runs/bench.jsonl --verify-repro
+python3 query.py --log-file runs/bench.jsonl --verify-repro
 ```
 
 ## Logged Record Structure

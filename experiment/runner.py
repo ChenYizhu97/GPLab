@@ -12,8 +12,8 @@ from tqdm import tqdm
 
 from experiment.record import attach_repro, attach_results, attach_runtime_meta
 from experiment.repro import build_protocol_digest
-from model.Classifer_Sum import GRAPH_CLASSIFIER_SUM
-from model.Classifer_plain import GRAPH_CLASSIFIER_PLAIN
+from model.classifier_plain import GraphClassifierPlain
+from model.classifier_sum import GraphClassifierSum
 from training import test, train
 from utils.dataset import build_dataset_id, build_split_indices, load_dataset, split_dataset
 from utils.io import build_runtime_meta, print_expr_info, sep_c
@@ -27,7 +27,7 @@ from utils.reproducibility import (
 
 def _build_model(conf: dict, dataset, avg_node_num: float, device: torch.device):
     model_type = conf["model"].get("variant", "sum")
-    model_class = GRAPH_CLASSIFIER_PLAIN if model_type == "plain" else GRAPH_CLASSIFIER_SUM
+    model_class = GraphClassifierPlain if model_type == "plain" else GraphClassifierSum
     return model_class(
         dataset.num_node_features,
         dataset.num_classes,

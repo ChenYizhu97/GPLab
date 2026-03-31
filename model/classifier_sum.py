@@ -3,7 +3,7 @@ from torch import Tensor
 from .Model import GRAPH_CLASSIFIER_BASE
 
 
-class GRAPH_CLASSIFIER_SUM(GRAPH_CLASSIFIER_BASE):
+class GraphClassifierSum(GRAPH_CLASSIFIER_BASE):
     def _readout_before_pool(self, x: Tensor, batch: Tensor) -> Tensor:
         return self.global_pool(x=x, batch=batch)
 
