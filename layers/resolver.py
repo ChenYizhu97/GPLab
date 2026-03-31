@@ -135,7 +135,7 @@ def pool_resolver(pool:str, in_channels:int, ratio:float=0.5, avg_node_num:Optio
         if pool == "mincutpool":
             return PoolAdapter(Linear(in_channels, k), pool)
         if pool == "diffpool":
-            return PoolAdapter(DenseGCNConv(in_channels, k), pool, nonlinearity=nonlinearity)
+            return PoolAdapter(DenseGCNConv(in_channels, k), pool)
         return PoolAdapter(Linear(in_channels, k), pool)
 
     if ":" in pool:

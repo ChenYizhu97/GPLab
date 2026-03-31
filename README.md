@@ -1,68 +1,73 @@
 # GPLab
 
-A lightweight benchmark lab for graph pooling methods under a unified protocol.
+GPLab is a lightweight benchmark project for graph pooling methods on graph classification tasks.
 
-GPLab is built for one thing: **fair comparison of pooling layers**. It keeps the backbone, optimization setup, and dataset pipeline consistent so the pooling choice becomes the main variable.
+Its purpose is simple: keep the training protocol, backbone, dataset handling, and logging format consistent so different pooling methods can be compared under the same setup.
 
-![A query.](GPLab.png)
+![GPLab](GPLab.png)
 
-## Why GPLab
+## What GPLab Does
 
-Graph pooling papers are often hard to compare directly because training pipelines differ. GPLab standardizes the experiment loop and logs each run as a structured JSON record for reproducibility and later querying.
+GPLab focuses on four things:
 
-Core goals:
-- Swap pooling methods via CLI or config, without touching model code.
-- Keep one consistent 2-layer sparse GNN backbone across methods.
-- Record config + metadata + per-run metrics as append-only JSONL.
-- Support both built-in pooling and plugin-based custom pooling.
+- run graph classification experiments with a fixed backbone;
+- swap pooling methods from the command line;
+- support both built-in and custom pooling modules;
+- record each experiment as a structured JSONL entry for later querying.
 
-## Design Protocol
+This makes GPLab a compact pooling benchmark harness rather than a general training framework.
 
-GPLab intentionally uses a **unified sparse-backbone protocol**:
-- Sparse poolers (`topkpool`, `sagpool`, `asapool`, `sparsepool`) run natively.
-- Dense-style poolers (`mincutpool`, `diffpool`, `densepool`) are wrapped by an adapter that:
-1. Converts sparse graph batches to dense.
-2. Applies dense pooling.
-3. Converts outputs back to sparse.
+## Core Design
 
-This keeps downstream layers identical across pooling methods, which improves benchmark comparability.
+GPLab uses one shared graph-classification backbone and one shared experiment loop.
+
+The key design choice is the pooling protocol:
+
+- sparse pooling methods run directly on sparse graph batches;
+- dense pooling methods are adapted through a dense-to-sparse bridge so they can reuse the same downstream sparse backbone.
+
+This keeps the post-pooling computation path aligned across methods and improves comparability.
 
 ## Project Layout
 
 ```text
 GPLab/
   main.py                    # CLI entrypoint and experiment driver
-  training.py                # train/test loops
-  querry.py                  # JSONL result query utility
+  training.py                # training and evaluation loops
+  querry.py                  # JSONL query tool
   model/
-    Model.py                 # model base class
-    Classifer_Sum.py         # primary graph classifier
+    Model.py                 # shared graph classifier backbone
+    Classifer_Sum.py         # sum model variant
+    Classifer_plain.py       # plain model variant
   layers/
-    resolver.py              # conv/pool resolver + plugin loading
+    resolver.py              # conv/pool resolver and plugin loading
     functional.py            # readout and pooling helpers
     pool/
-      PoolAdapter.py         # dense->sparse adapter protocol
-      SAGPool.py             # customized SAGPooling
+      contracts.py           # PoolOutput contract and validation
+      PoolAdapter.py         # dense pooling adapter
+      SAGPool.py             # customized SAG pooling
       SparsePool.py          # custom sparse pooling
   utils/
-    dataset.py               # TU dataset loading/splitting
-    reproducibility.py       # seeds and deterministic loaders
+    dataset.py               # TU dataset loading and splitting
+    reproducibility.py       # seeds, loaders, runtime determinism
     data.py                  # dense/sparse conversion helpers
-    io.py                    # runtime metadata and printing
+    io.py                    # runtime metadata and experiment printing
+    jsonl.py                 # JSONL I/O
   config/
     model.toml               # model defaults
     experiment.toml          # experiment defaults
-    seeds                    # optional seed list file
+    seeds                    # optional seed file for file mode
   examples/
-    custom_pool_plugin.py    # plugin example
-    logs/                    # sample JSONL logs
+    custom_pool_plugin.py    # custom pooling example
+    logs/                    # sample logs
 ```
 
 ## Installation
 
-GPLab is a Python project built around PyTorch + PyG.
+GPLab depends on PyTorch, PyG, and a small set of CLI/logging utilities.
 
-Required runtime packages:
+Required packages:
+
 - `torch`
 - `torch-geometric`
 - `torcheval`
@@ -72,7 +77,7 @@ Required runtime packages:
 - `tqdm`
 - `numpy`
 
-Example setup (adjust CUDA/PyTorch wheels for your environment):
+Example setup:
 
 ```bash
 python3 -m venv .venv
@@ -88,14 +93,21 @@ Run one experiment:
 python3 main.py --pool sagpool --pool-ratio 0.5 --dataset PROTEINS
 ```
 
-Append result to JSONL:
+Run the plain model instead of the sum model:
+
+```bash
+python3 main.py --pool sagpool --pool-ratio 0.5 --dataset PROTEINS --model-type plain
+```
+
+Append the result to a JSONL file:
 
 ```bash
 python3 main.py \
-  --pool sagpool \
+  --pool sparsepool \
   --pool-ratio 0.5 \
   --dataset PROTEINS \
-  --log-file runs/tu_pooling.jsonl
+  --log-file runs/bench.jsonl \
+  --comment "purpose=baseline;date=2026-03-31"
 ```
 
 Batch script example:
@@ -104,9 +116,25 @@ Batch script example:
 bash utils/main.sh
 ```
 
+## Models
+
+GPLab currently provides two model variants built on the same shared backbone:
+
+- `sum`: reads out graph representations both before and after pooling, then adds them;
+- `plain`: uses only the post-pooling graph representation.
+
+Both models share:
+
+- `pre_gnn`
+- two graph convolution blocks
+- one pooling stage
+- one shared readout definition
+- one post-MLP classification head
+
 ## Built-in Pooling Methods
 
 Available built-ins:
+
 - `nopool`
 - `topkpool`
 - `sagpool`
@@ -116,9 +144,53 @@ Available built-ins:
 - `diffpool`
 - `densepool`
 
+## Pooling Contract
+
+All pooling layers are expected to return a `PoolOutput` dataclass.
+
+Minimal required fields:
+
+- `x`
+- `edge_index`
+- `batch`
+
+Optional fields:
+
+- `edge_attr`
+- `perm`
+- `score`
+- `aux_loss`
+
+The first batch is validated through `validate_pool_output()` so format errors can fail early and clearly.
+
+Example:
+
+```python
+from layers.pool.contracts import PoolOutput
+
+
+class MyPool(torch.nn.Module):
+    def forward(self, x, edge_index, batch):
+        return PoolOutput(
+            x=x,
+            edge_index=edge_index,
+            batch=batch,
+            edge_attr=None,
+            perm=None,
+            score=None,
+            aux_loss=None,
+        )
+```
+
 ## Custom Pooling Plugin
 
-You can pass a factory path in `<python_module>:<factory_name>` format:
+Custom pooling is loaded with:
+
+```text
+<python_module>:<factory_name>
+```
+
+Example:
 
 ```bash
 python3 main.py \
@@ -126,43 +198,6 @@ python3 main.py \
   --pool-ratio 0.6 \
   --dataset PROTEINS
 ```
-
-### Plugin Output Contract
-
-All custom pooling layers **must** return a `PoolOutput` dataclass from `forward()`:
-
-```python
-from layers.pool.contracts import PoolOutput
-
-class MyCustomPool(torch.nn.Module):
-    def forward(self, x, edge_index, batch):
-        # Your pooling logic
-        ...
-        return PoolOutput(
-            x=x_pooled,              # Required: node features [N_pooled, F]
-            edge_index=edge_index_pooled,  # Required: edges [2, E_pooled]
-            batch=batch_pooled,      # Required: batch vector [N_pooled]
-            edge_attr=None,          # Optional: edge features
-            perm=None,               # Optional: selected indices
-            score=None,              # Optional: selection scores
-            aux_loss=None,           # Optional: scalar auxiliary loss
-        )
-```
-
-**Required fields:**
-- `x`: Pooled node features, shape `[N_pooled, F]`
-- `edge_index`: Pooled edge indices, shape `[2, E_pooled]`
-- `batch`: Batch assignment vector, shape `[N_pooled]`
-
-**Optional fields:**
-- `edge_attr`: Edge features
-- `perm`: Indices of selected nodes in original graph
-- `score`: Node selection scores/weights
-- `aux_loss`: Scalar auxiliary loss (e.g., link prediction loss). Will be added to training loss.
-
-Contract violations are caught on the first batch with clear error messages. See `examples/custom_pool_plugin.py` for a complete example.
-
-### Factory Signature
 
 Recommended factory signature:
 
@@ -176,115 +211,115 @@ def build_pool(
     ...
 ```
 
-GPLab first calls the full signature above, then falls back to `(in_channels, ratio)` for backward compatibility.
+GPLab first tries the full signature and then falls back to `(in_channels, ratio)`.
+
+## Dense Pooling Adapter
+
+`mincutpool`, `diffpool`, and `densepool` are integrated through `PoolAdapter`.
+
+The adapter does four things:
+
+1. convert sparse batches to dense tensors;
+2. compute the assignment matrix;
+3. apply the dense pooling method;
+4. convert the pooled graph back to sparse format.
+
+This lets dense pooling methods share the same downstream sparse backbone used by sparse pooling methods.
 
 ## Configuration
 
 ### `config/model.toml`
-Model backbone and head:
+
+Main model fields:
+
 - `hidden_features`
 - `nonlinearity`
 - `p_dropout`
-- `conv_layer` (`GCN`, `GraphConv`, `GIN`)
-- `pre_gnn` and `post_gnn` MLP channel lists
+- `conv_layer`
+- `pre_gnn`
+- `post_gnn`
 
 ### `config/experiment.toml`
-Experiment control:
-- `runs`, `epochs`, `patience`
-- `lr`, `batch_size`
-- `seed_mode` (`auto` by default, `file` to read seeds from file)
-- `seed_base` (deterministic seed generator base in `auto` mode)
-- `allow_duplicate_seeds` (default `false`, optional when you intentionally replay fixed duplicate seeds)
-- `seeds` path (used when `seed_mode=file`)
-- `train_ratio`, `val_ratio`
 
-`test_ratio` is derived as `1 - train_ratio - val_ratio`.
+Main experiment fields:
+
+- `runs`
+- `lr`
+- `batch_size`
+- `patience`
+- `epochs`
+- `seeds`
+- `seed_mode`
+- `seed_base`
+- `allow_duplicate_seeds`
+- `train_ratio`
+- `val_ratio`
+
+`test_ratio` is derived as:
+
+```text
+1 - train_ratio - val_ratio
+```
 
 ## Reproducibility
 
 GPLab tracks reproducibility at multiple levels:
-- Seeded NumPy/Torch/Python random state.
-- Seeded DataLoader generator + worker init seeds.
-- Deterministic split fingerprint via `split_digest`.
-- Full config snapshot (`model`, `experiment`, `pool`, `meta`) in each log record.
-- Minimal `repro` block fields:
-  - `seed_mode`, `seed_base`, `seeds`
-  - `split_digest`, `split_ratio`
-  - `dataset_id` (`name`, graph size summary)
-  - `env` (`python`, `torch`, `torch_geometric`, device, cudnn flags)
 
-### Standard Repro Workflow
+- seeded Python / NumPy / Torch randomness;
+- seeded DataLoader generator;
+- deterministic split fingerprint via `split_digest`;
+- runtime environment metadata;
+- full experiment configuration recorded in each JSONL entry.
 
-1. Generate an experiment log record:
+Current seed modes:
 
-```bash
-python3 main.py \
-  --pool sparsepool \
-  --dataset PROTEINS \
-  --log-file runs/bench.jsonl \
-  --comment "purpose=baseline;date=2026-03-20"
-```
+- `auto`: generate deterministic unique seeds from `seed_base`;
+- `file`: load seeds from file, with duplicate protection unless explicitly allowed.
 
-2. Query and check summary fields:
+## Querying Results
+
+Use `querry.py` to inspect JSONL logs.
+
+Examples:
 
 ```bash
 python3 querry.py --log-file runs/bench.jsonl --pool sparsepool --dataset PROTEINS --epoch
 ```
 
-## Logged Record Schema
+```bash
+python3 querry.py --log-file runs/bench.jsonl --show-repro
+```
 
-Each `main.py` run emits one JSON object. With `--log-file`, objects are appended as JSONL.
+```bash
+python3 querry.py --log-file runs/bench.jsonl --verify-repro
+```
 
-Main fields:
+## Logged Record Structure
+
+Each experiment record contains the main sections:
+
 - `model`
 - `experiment`
 - `pool`
 - `dataset`
-- `comment` (optional)
+- `comment`
 - `meta`
-- `repro` (minimal reproducibility fields)
-- `results.statistic` (`mean`, `std`)
-- `results.data` (`val_loss`, `test_acc`, `epochs_stop`, per-run details)
+- `repro`
+- `results`
 
-## Query Results
+The `results` block contains:
 
-Use `querry.py` to filter logs by pool, dataset, and comment:
+- aggregate statistics;
+- arrays of losses / accuracies / stop epochs;
+- per-run detailed records.
 
-```bash
-python3 querry.py --log-file runs/tu_pooling.jsonl --pool sagpool --dataset PROTEINS --epoch
-```
+## Current Scope
 
-Reproducibility inspection:
+GPLab is intentionally narrow in scope:
 
-```bash
-python3 querry.py --log-file runs/tu_pooling.jsonl --show-repro
-python3 querry.py --log-file runs/tu_pooling.jsonl --verify-repro
-```
+- TU datasets only;
+- graph classification only;
+- one shared backbone family;
+- one pooling comparison protocol.
 
-## Minimal Benchmark Template
-
-Recommended template for pooled benchmark batches:
-
-```bash
-python3 main.py \
-  --pool sparsepool \
-  --pool-ratio 0.5 \
-  --dataset PROTEINS \
-  --log-file runs/bench_proteins.jsonl \
-  --comment "purpose=pooling_benchmark;date=2026-03-20"
-```
-
-Recommended `comment` fields:
-- `purpose=<task_or_hypothesis>`
-- `date=<YYYY-MM-DD>`
-
-## Known Limitations
-
-- TU datasets only.
-- Fixed backbone family (2-layer GNN with pre/post MLP).
-- Dense pooling is benchmarked through the unified adapter protocol, not dense-only downstream stacks.
-- Single-task graph classification only.
-
-## Notes on Naming
-
-A few filenames use legacy spellings (`querry.py`, `Classifer_*`). They are part of current public CLI/module paths, so treat them as stable unless refactoring end-to-end.
+This constraint is deliberate. The project is optimized for controlled pooling comparison, not for broad task coverage.

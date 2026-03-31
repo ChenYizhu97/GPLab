@@ -1,103 +1,101 @@
 from typing import Optional
+
 import torch
 from torch import Tensor
-from torch_geometric.utils import to_dense_adj, to_dense_batch
 from torch_geometric.nn.dense import dense_diff_pool, dense_mincut_pool
+from torch_geometric.utils import to_dense_adj, to_dense_batch
+
 from utils.data import to_sparse_batch
 from ..functional import dense_connect
-from typing_extensions import Union
-from torch_geometric.nn.resolver import activation_resolver
-
 from .contracts import PoolOutput
 
 
 class PoolAdapter(torch.nn.Module):
     def __init__(
-            self, 
-            pool:Optional[torch.nn.Module],
-            pool_method: str,
-            nonlinearity:Union[str, callable]="relu",
-            *args, 
-            **kwargs
+        self,
+        pool: Optional[torch.nn.Module],
+        pool_method: str,
+        *args,
+        **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
+        if pool is None:
+            raise ValueError("PoolAdapter requires a learnable assignment module.")
+
         self.pool = pool
         self.pool_method = pool_method
-        self.aux_loss = None
-        self.nonlinearity = activation_resolver(nonlinearity)
         self.reset_parameters()
-    
+
     def forward(
-            self,
-            x: Tensor,
-            edge_index: Tensor,
-            batch: Tensor
+        self,
+        x: Tensor,
+        edge_index: Tensor,
+        batch: Tensor,
     ) -> PoolOutput:
-        """
-        Dense pooling adapter following GPLab's unified benchmark protocol.
-        
-        Dense pooling outputs are converted back to sparse tensors so all pooling
-        methods can share one downstream sparse backbone.
-        
-        Args:
-            x: Node features, shape [N, F]
-            edge_index: Edge indices, shape [2, E]
-            batch: Batch vector, shape [N]
-            
-        Returns:
-            PoolOutput with pooled graph in sparse format
-        """
-        # NOTE: This adapter intentionally follows GPLab's unified benchmark protocol:
-        # dense pooling outputs are converted back to sparse tensors so all pooling methods
-        # can share one downstream sparse backbone. Paper-style dense-only backbones are
-        # intentionally not handled here for now.
-        x, mask, adj = self._pre_pool(x, edge_index, batch)
-        
-        # pool
-        if self.pool_method == "diffpool":
-            s = self.pool(x, adj, mask)
-        if self.pool_method in ["mincutpool", "densepool"]:
-            s = self.pool(x)
+        dense_x, mask, adj = self._to_dense_inputs(x, edge_index, batch)
+        assignment = self._compute_assignment(dense_x, adj, mask)
+        pooled_x, pooled_adj, aux_loss = self._apply_pooling(dense_x, adj, assignment, mask)
+        sparse_x, sparse_edge_index, sparse_batch = to_sparse_batch(pooled_x, pooled_adj)
 
-        # connect
-        aux_loss = None
-        if self.pool_method == "mincutpool":
-            x, adj, l1, l2 = dense_mincut_pool(x, adj, s, mask)
-            aux_loss = 0.5*l1 + l2
-        if self.pool_method == "diffpool":
-            x, adj, link_loss, ent_loss = dense_diff_pool(x, adj, s, mask)
-            aux_loss = 0.1*link_loss + 0.1*ent_loss
-        if self.pool_method == "densepool":
-            x, adj = dense_connect(x, adj, s, mask)
-
-        x, edge_index, batch = self._post_pool(x, adj)
-        
         return PoolOutput(
-            x=x,
-            edge_index=edge_index,
-            batch=batch,
-            aux_loss=aux_loss
+            x=sparse_x,
+            edge_index=sparse_edge_index,
+            batch=sparse_batch,
+            aux_loss=aux_loss,
         )
 
-    
-    def _pre_pool(
-            self,
-            x: Tensor,
-            edge_index: Tensor,
-            batch: Tensor
-    ):
-        x, mask = to_dense_batch(x, batch=batch)
+    def _to_dense_inputs(
+        self,
+        x: Tensor,
+        edge_index: Tensor,
+        batch: Tensor,
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        dense_x, mask = to_dense_batch(x, batch=batch)
         adj = to_dense_adj(edge_index, batch)
+        return dense_x, mask, adj
 
-        return x, mask, adj
-        
-    def _post_pool(
-            self,
-            x: Tensor,
-            adj: Tensor
-    ):
-        x, edge_index, batch = to_sparse_batch(x, adj)
-        return x, edge_index, batch
+    def _compute_assignment(self, x: Tensor, adj: Tensor, mask: Tensor) -> Tensor:
+        if self.pool_method == "diffpool":
+            return self.pool(x, adj, mask)
+        return self.pool(x)
 
-    def reset_parameters(self):
+    def _apply_pooling(
+        self,
+        x: Tensor,
+        adj: Tensor,
+        assignment: Tensor,
+        mask: Tensor,
+    ) -> tuple[Tensor, Tensor, Optional[Tensor]]:
+        if self.pool_method == "mincutpool":
+            return self._apply_mincut_pool(x, adj, assignment, mask)
+        if self.pool_method == "diffpool":
+            return self._apply_diff_pool(x, adj, assignment, mask)
+        if self.pool_method == "densepool":
+            pooled_x, pooled_adj = dense_connect(x, adj, assignment, mask)
+            return pooled_x, pooled_adj, None
+        raise ValueError(f"Unsupported dense pooling method '{self.pool_method}'.")
+
+    def _apply_mincut_pool(
+        self,
+        x: Tensor,
+        adj: Tensor,
+        assignment: Tensor,
+        mask: Tensor,
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        pooled_x, pooled_adj, mincut_loss, ortho_loss = dense_mincut_pool(x, adj, assignment, mask)
+        aux_loss = 0.5 * mincut_loss + ortho_loss
+        return pooled_x, pooled_adj, aux_loss
+
+    def _apply_diff_pool(
+        self,
+        x: Tensor,
+        adj: Tensor,
+        assignment: Tensor,
+        mask: Tensor,
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        pooled_x, pooled_adj, link_loss, ent_loss = dense_diff_pool(x, adj, assignment, mask)
+        aux_loss = 0.1 * link_loss + 0.1 * ent_loss
+        return pooled_x, pooled_adj, aux_loss
+
+    def reset_parameters(self) -> None:
         self.pool.reset_parameters()
