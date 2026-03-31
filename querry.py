@@ -1,7 +1,7 @@
 import typer
 from typing_extensions import Optional, Annotated
 import numpy as np
-from utils.cli import validate_dataset, validate_pool
+from utils.cli import validate_dataset, validate_model_type, validate_pool
 from utils.jsonl import read_jsonl
 
 app = typer.Typer(pretty_exceptions_enable=False)
@@ -31,7 +31,17 @@ def _filter_comment(comment: str, data: list[dict]):
     return filter(lambda x: x.get("comment", "") == comment, data)
 
 
-def _apply_filters(records: list[dict], dataset: Optional[str], pool: Optional[str], comment: Optional[str]):
+def _filter_model_type(model_type: str, data: list[dict]):
+    return filter(lambda x: x.get("model", {}).get("variant", "sum") == model_type, data)
+
+
+def _apply_filters(
+    records: list[dict],
+    dataset: Optional[str],
+    pool: Optional[str],
+    comment: Optional[str],
+    model_type: Optional[str],
+):
     filtered = records
     if dataset is not None:
         filtered = _filter_dataset(dataset, filtered)
@@ -39,6 +49,8 @@ def _apply_filters(records: list[dict], dataset: Optional[str], pool: Optional[s
         filtered = _filter_pool(pool, filtered)
     if comment is not None:
         filtered = _filter_comment(comment, filtered)
+    if model_type is not None:
+        filtered = _filter_model_type(model_type, filtered)
     return filtered
 
 
@@ -52,6 +64,7 @@ def _read_statistic(record: dict):
 
 def _read_default(record: dict):
     default = {**record["pool"], "dataset": record["dataset"]}
+    default["model_type"] = record.get("model", {}).get("variant", "sum")
     if "comment" in record:
         default["comment"] = record["comment"]
     return default
@@ -92,6 +105,7 @@ def main(
         log_file: Annotated[str, typer.Option(..., help="JSONL log file to query.")],
         pool: Annotated[Optional[str], typer.Option()] = None,
         dataset: Annotated[Optional[str], typer.Option()] = None,
+        model_type: Annotated[Optional[str], typer.Option(help="Filter by model variant: sum or plain.")] = None,
         comment: Annotated[Optional[str], typer.Option()] = None,
         epoch: Annotated[bool, typer.Option()] = False,
         show_repro: Annotated[bool, typer.Option(help="Show reproducibility fields.")] = False,
@@ -104,9 +118,11 @@ def main(
         validate_dataset(dataset)
     if pool is not None:
         validate_pool(pool)
+    if model_type is not None:
+        validate_model_type(model_type)
 
     records = _load_jsonl(log_file)
-    records = _apply_filters(records, dataset, pool, comment)
+    records = _apply_filters(records, dataset, pool, comment, model_type)
 
     for record in records:
         print(_shape_output(record, epoch, show_repro, verify_repro))

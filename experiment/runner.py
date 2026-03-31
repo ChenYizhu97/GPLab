@@ -1,0 +1,186 @@
+import hashlib
+import json
+from decimal import Decimal
+
+import numpy as np
+import torch
+import torch.nn.functional as F
+from rich import print as rprint
+from torch_geometric.nn import summary
+from torcheval.metrics import Mean, MulticlassAccuracy
+from tqdm import tqdm
+
+from experiment.record import attach_repro, attach_results, attach_runtime_meta
+from model.Classifer_Sum import GRAPH_CLASSIFIER_SUM
+from model.Classifer_plain import GRAPH_CLASSIFIER_PLAIN
+from training import test, train
+from utils.dataset import build_dataset_id, build_split_indices, load_dataset, split_dataset
+from utils.io import build_runtime_meta, print_expr_info, sep_c
+from utils.reproducibility import (
+    configure_runtime_threads,
+    generate_loader,
+    resolve_seeds,
+    set_np_and_torch,
+)
+
+
+def _build_model(conf: dict, dataset, avg_node_num: float, device: torch.device):
+    model_type = conf["model"].get("variant", "sum")
+    model_class = GRAPH_CLASSIFIER_PLAIN if model_type == "plain" else GRAPH_CLASSIFIER_SUM
+    return model_class(
+        dataset.num_node_features,
+        dataset.num_classes,
+        pool_method=conf["pool"]["method"],
+        ratio=conf["pool"]["ratio"],
+        config=conf["model"],
+        avg_node_num=avg_node_num,
+    ).to(device)
+
+
+def _prepare_split_metadata(conf: dict, dataset_size: int) -> list[dict]:
+    expr_conf = conf["experiment"]
+    seeds = resolve_seeds(
+        runs=expr_conf["runs"],
+        seed_mode=expr_conf["seed_mode"],
+        seeds_path=expr_conf.get("seeds"),
+        seed_base=expr_conf["seed_base"] if expr_conf["seed_base"] is not None else 20260320,
+        allow_duplicate_seeds=expr_conf["allow_duplicate_seeds"],
+    )
+    expr_conf["seeds"] = seeds
+
+    split_indices_all = [
+        build_split_indices(
+            dataset_size,
+            seed=seed,
+            train_ratio=expr_conf["train_ratio"],
+            val_ratio=expr_conf["val_ratio"],
+        )
+        for seed in seeds
+    ]
+
+    split_digest = hashlib.sha1(json.dumps(split_indices_all, sort_keys=True).encode("utf-8")).hexdigest()
+    train_ratio_dec = Decimal(str(expr_conf["train_ratio"]))
+    val_ratio_dec = Decimal(str(expr_conf["val_ratio"]))
+    test_ratio_dec = Decimal("1") - train_ratio_dec - val_ratio_dec
+    expr_conf["split_digest"] = split_digest
+    expr_conf["split_ratio"] = {
+        "train": float(train_ratio_dec),
+        "val": float(val_ratio_dec),
+        "test": float(test_ratio_dec),
+    }
+    return split_indices_all
+
+
+def _build_metrics(device: torch.device, num_classes: int) -> dict:
+    return {
+        "loss": Mean(device=device),
+        "acc": MulticlassAccuracy(average="micro", device=device, num_classes=num_classes),
+    }
+
+
+def _run_single_experiment(model, dataset, run_idx: int, run_seed: int, run_split: dict, expr_conf: dict, metrics: dict, device: torch.device) -> dict:
+    set_np_and_torch(run_seed)
+    train_dataset, val_dataset, test_dataset = split_dataset(dataset, split_indices=run_split)
+
+    train_loader = generate_loader(train_dataset, expr_conf["batch_size"], shuffle=True, seed=run_seed)
+    val_loader = generate_loader(val_dataset, expr_conf["batch_size"], shuffle=False, seed=run_seed)
+    test_loader = generate_loader(test_dataset, expr_conf["batch_size"], shuffle=False, seed=run_seed)
+
+    model.reset_parameters()
+    optimizer = torch.optim.Adam(model.parameters(), lr=expr_conf["lr"])
+    loss_fn = F.nll_loss
+
+    best_val_loss = np.inf
+    best_test_acc = 0.0
+    best_epoch = 1
+
+    loop = tqdm(range(1, expr_conf["epochs"] + 1))
+    for epoch in loop:
+        train(model, train_loader, optimizer, loss_fn, metrics, device)
+        _, val_loss = test(model, val_loader, loss_fn, metrics, device)
+        test_acc, _ = test(model, test_loader, loss_fn, metrics, device)
+
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            best_test_acc = test_acc
+            best_epoch = epoch
+
+        if epoch > best_epoch + expr_conf["patience"]:
+            break
+
+        loop.set_description(f"Run [{run_idx}/{expr_conf['runs']}]-Epoch [{epoch}/{expr_conf['epochs']}]")
+        loop.set_postfix(best_epoch=best_epoch, best_test_acc=best_test_acc, best_val_loss=best_val_loss)
+
+    return {
+        "run": run_idx,
+        "seed": run_seed,
+        "split_sizes": {
+            "train": len(train_dataset),
+            "val": len(val_dataset),
+            "test": len(test_dataset),
+        },
+        "best_epoch": best_epoch,
+        "best_val_loss": best_val_loss,
+        "best_test_acc": best_test_acc,
+    }
+
+
+def run_experiment(conf: dict) -> dict:
+    configure_runtime_threads()
+    set_np_and_torch(0)
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    attach_runtime_meta(conf, build_runtime_meta(device))
+    print_expr_info(conf, device)
+
+    dataset = load_dataset(conf["dataset"])
+    if dataset is None:
+        raise ValueError(f"Failed to load dataset '{conf['dataset']}'.")
+    if len(dataset) == 0:
+        raise ValueError("Loaded dataset is empty.")
+
+    avg_node_num = dataset._data.num_nodes // len(dataset)
+    model = _build_model(conf, dataset, avg_node_num, device)
+    rprint(summary(model, data=dataset[0].to(device), leaf_module=None, max_depth=5))
+
+    split_indices_all = _prepare_split_metadata(conf, len(dataset))
+    metrics = _build_metrics(device, dataset.num_classes)
+
+    loss_list = []
+    acc_list = []
+    epoch_list = []
+    run_records = []
+    expr_conf = conf["experiment"]
+
+    for run_idx in range(1, expr_conf["runs"] + 1):
+        run_record = _run_single_experiment(
+            model,
+            dataset,
+            run_idx=run_idx,
+            run_seed=expr_conf["seeds"][run_idx - 1],
+            run_split=split_indices_all[run_idx - 1],
+            expr_conf=expr_conf,
+            metrics=metrics,
+            device=device,
+        )
+        if run_idx != expr_conf["runs"]:
+            rprint(sep_c("-"))
+
+        loss_list.append(run_record["best_val_loss"])
+        acc_list.append(run_record["best_test_acc"])
+        epoch_list.append(run_record["best_epoch"])
+        run_records.append(run_record)
+
+    attach_results(
+        conf,
+        val_loss=loss_list,
+        test_acc=acc_list,
+        epochs_stop=epoch_list,
+        runs=run_records,
+    )
+    attach_repro(
+        conf,
+        seed_mode=expr_conf["seed_mode"],
+        seed_base=expr_conf["seed_base"],
+        dataset_id=build_dataset_id(conf["dataset"], dataset),
+    )
+    return conf

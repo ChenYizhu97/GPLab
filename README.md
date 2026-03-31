@@ -32,7 +32,11 @@ This keeps the post-pooling computation path aligned across methods and improves
 
 ```text
 GPLab/
-  main.py                    # CLI entrypoint and experiment driver
+  main.py                    # CLI entrypoint
+  experiment/
+    config.py                # experiment request normalization
+    runner.py                # experiment orchestration
+    record.py                # result/repro record assembly
   training.py                # training and evaluation loops
   querry.py                  # JSONL query tool
   model/
@@ -53,6 +57,7 @@ GPLab/
     data.py                  # dense/sparse conversion helpers
     io.py                    # runtime metadata and experiment printing
     jsonl.py                 # JSONL I/O
+    smoke_test.sh            # built-in pool x dataset smoke test
   config/
     model.toml               # model defaults
     experiment.toml          # experiment defaults
@@ -99,6 +104,9 @@ Run the plain model instead of the sum model:
 python3 main.py --pool sagpool --pool-ratio 0.5 --dataset PROTEINS --model-type plain
 ```
 
+`--model-type` is persisted in experiment logs as `model.variant`, so `sum`
+and `plain` runs remain distinguishable in JSONL records and downstream queries.
+
 Append the result to a JSONL file:
 
 ```bash
@@ -115,6 +123,41 @@ Batch script example:
 ```bash
 bash utils/main.sh
 ```
+
+Run a built-in smoke test across all built-in pools and TU datasets:
+
+```bash
+bash utils/smoke_test.sh
+```
+
+To limit the sweep, override `POOLS` or `DATASETS`:
+
+```bash
+POOLS="sagpool diffpool" DATASETS="MUTAG PROTEINS" bash utils/smoke_test.sh
+```
+
+If your environment does not expose the correct Python by default, pass it explicitly:
+
+```bash
+PYTHON_CMD="conda run -n torch_env python3" bash utils/smoke_test.sh
+```
+
+## Querying Logs
+
+Query a JSONL log file:
+
+```bash
+python3 querry.py --log-file runs/bench.jsonl
+```
+
+Filter by model variant:
+
+```bash
+python3 querry.py --log-file runs/bench.jsonl --model-type plain
+```
+
+`querry.py` reads `model.variant` from each record and defaults missing values to `sum`
+for backward compatibility with older logs.
 
 ## Models
 
@@ -238,6 +281,7 @@ Main model fields:
 - `conv_layer`
 - `pre_gnn`
 - `post_gnn`
+- `variant` in logged records, set from `--model-type`
 
 ### `config/experiment.toml`
 
