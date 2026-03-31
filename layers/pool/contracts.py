@@ -23,6 +23,7 @@ class PoolOutput:
 
     Optional fields:
         edge_attr: Edge features, shape [E_pooled, F_edge] or None
+        edge_weight: Edge weights, shape [E_pooled] or None
         perm: Indices of selected nodes in original graph, shape [N_pooled] or None
         score: Selection scores/weights for pooled nodes, shape [N_pooled] or None
         aux_loss: Auxiliary loss term (e.g., link loss, entropy loss), scalar Tensor or None
@@ -39,6 +40,7 @@ class PoolOutput:
     edge_index: Tensor
     batch: Tensor
     edge_attr: Optional[Tensor] = None
+    edge_weight: Optional[Tensor] = None
     perm: Optional[Tensor] = None
     score: Optional[Tensor] = None
     aux_loss: Optional[Tensor] = None
@@ -136,6 +138,14 @@ def validate_pool_output(pool_out, pool_name: str) -> None:
     # Check 5: Optional fields - type and device consistency
     if pool_out.edge_attr is not None:
         _check_tensor_field(pool_out.edge_attr, "edge_attr", pool_name, device)
+
+    if pool_out.edge_weight is not None:
+        _check_tensor_field(pool_out.edge_weight, "edge_weight", pool_name, device)
+        if pool_out.edge_weight.dim() != 1:
+            raise ValueError(
+                f"Pooling '{pool_name}': edge_weight must be 1D [E], "
+                f"got shape {list(pool_out.edge_weight.shape)}"
+            )
 
     if pool_out.perm is not None:
         _check_tensor_field(pool_out.perm, "perm", pool_name, device)

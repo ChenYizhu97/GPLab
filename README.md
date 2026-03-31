@@ -200,6 +200,7 @@ Minimal required fields:
 Optional fields:
 
 - `edge_attr`
+- `edge_weight`
 - `perm`
 - `score`
 - `aux_loss`
@@ -219,6 +220,7 @@ class MyPool(torch.nn.Module):
             edge_index=edge_index,
             batch=batch,
             edge_attr=None,
+            edge_weight=None,
             perm=None,
             score=None,
             aux_loss=None,
@@ -265,9 +267,18 @@ The adapter does four things:
 1. convert sparse batches to dense tensors;
 2. compute the assignment matrix;
 3. apply the dense pooling method;
-4. convert the pooled graph back to sparse format.
+4. convert the pooled coarse graph back to sparse format, including coarse adjacency weights.
 
 This lets dense pooling methods share the same downstream sparse backbone used by sparse pooling methods.
+
+Current dense-pooling protocol in GPLab:
+
+- dense input `mask` is only used to exclude padded input nodes from pooling computation;
+- dense output positions are interpreted as fixed coarse clusters, not as retained original nodes;
+- GPLab keeps all fixed `C` coarse clusters produced by dense pooling when returning to the shared sparse downstream path;
+- when the dense pooled adjacency carries real-valued coarse edge weights, GPLab preserves those weights in the adapter and forwards them to downstream `GCN` / `GraphConv` layers when supported;
+- for backbones that do not consume `edge_weight`, GPLab first drops exact zero-weight coarse edges, then applies the convolution on the remaining unweighted coarse graph;
+- this means weighted coarse-adjacency semantics are preserved best with `GCN` / `GraphConv`, while weight-blind backbones such as `GIN` still follow the same coarse-node protocol but lose edge-strength information.
 
 ## Configuration
 

@@ -43,12 +43,13 @@ class PoolAdapter(torch.nn.Module):
         dense_x, mask, adj = self._to_dense_inputs(x, edge_index, batch)
         assignment = self._compute_assignment(dense_x, adj, mask)
         pooled_x, pooled_adj, aux_loss = self._apply_pooling(dense_x, adj, assignment, mask)
-        sparse_x, sparse_edge_index, sparse_batch = to_sparse_batch(pooled_x, pooled_adj)
+        sparse_x, sparse_edge_index, sparse_batch, sparse_edge_weight = to_sparse_batch(pooled_x, pooled_adj)
 
         return PoolOutput(
             x=sparse_x,
             edge_index=sparse_edge_index,
             batch=sparse_batch,
+            edge_weight=sparse_edge_weight,
             aux_loss=aux_loss,
         )
 

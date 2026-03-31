@@ -168,6 +168,7 @@ cython_debug/
 
 # local research notes
 research.md
+pool.md
 
 # local planning notes
 *plan*.md

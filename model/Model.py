@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import inspect
 from typing import Optional
 
 import toml
@@ -30,9 +31,9 @@ class MODEL(torch.nn.Module):
         x: Tensor,
         edge_index: Tensor,
         batch: Tensor,
-    ) -> tuple[Tensor, Tensor, Tensor, Optional[Tensor]]:
+    ) -> tuple[Tensor, Tensor, Tensor, Optional[Tensor], Optional[Tensor]]:
         if pool is None:
-            return x, edge_index, batch, None
+            return x, edge_index, batch, None, None
 
         pool_out = pool(x=x, edge_index=edge_index, batch=batch)
 
@@ -40,7 +41,13 @@ class MODEL(torch.nn.Module):
             validate_pool_output(pool_out, pool.__class__.__name__)
             self._pool_validated = True
 
-        return pool_out.x, pool_out.edge_index, pool_out.batch, pool_out.aux_loss
+        return (
+            pool_out.x,
+            pool_out.edge_index,
+            pool_out.batch,
+            pool_out.edge_weight,
+            pool_out.aux_loss,
+        )
 
     def _load_from_config(self, config: dict) -> None:
         self.p_dropout = config["p_dropout"]
@@ -99,15 +106,15 @@ class GRAPH_CLASSIFIER_BASE(MODEL, ABC):
         self.reset_parameters()
 
     def forward(self, data: Data) -> tuple[Tensor, Optional[Tensor]]:
-        x, edge_index, batch = self._unpack_graph(data)
+        x, edge_index, batch, edge_weight = self._unpack_graph(data)
 
         x = self.pre_gnn(x)
-        x = self._apply_conv_block(self.conv1, self.ln_conv1, x, edge_index)
+        x = self._apply_conv_block(self.conv1, self.ln_conv1, x, edge_index, edge_weight=edge_weight)
 
         before_pool = self._readout_before_pool(x, batch)
-        x, edge_index, batch, aux_loss = self._pool(self.pool, x=x, edge_index=edge_index, batch=batch)
+        x, edge_index, batch, edge_weight, aux_loss = self._pool(self.pool, x=x, edge_index=edge_index, batch=batch)
 
-        x = self._apply_conv_block(self.conv2, self.ln_conv2, x, edge_index)
+        x = self._apply_conv_block(self.conv2, self.ln_conv2, x, edge_index, edge_weight=edge_weight)
         after_pool = self.global_pool(x=x, batch=batch)
 
         graph_embedding = self._merge_graph_embeddings(before_pool, after_pool)
@@ -154,11 +161,12 @@ class GRAPH_CLASSIFIER_BASE(MODEL, ABC):
             dropout=self.p_dropout,
         )
 
-    def _unpack_graph(self, data: Data) -> tuple[Tensor, Tensor, Tensor]:
+    def _unpack_graph(self, data: Data) -> tuple[Tensor, Tensor, Tensor, Optional[Tensor]]:
         batch = getattr(data, "batch", None)
         if batch is None:
             batch = data.edge_index.new_zeros(data.x.size(0))
-        return data.x, data.edge_index, batch
+        edge_weight = getattr(data, "edge_weight", None)
+        return data.x, data.edge_index, batch, edge_weight
 
     def _apply_conv_block(
         self,
@@ -166,10 +174,28 @@ class GRAPH_CLASSIFIER_BASE(MODEL, ABC):
         norm: torch.nn.Module,
         x: Tensor,
         edge_index: Tensor,
+        edge_weight: Optional[Tensor] = None,
     ) -> Tensor:
-        x = conv(x, edge_index)
+        if edge_weight is not None and self._conv_supports_edge_weight(conv):
+            x = conv(x, edge_index, edge_weight=edge_weight)
+        else:
+            if edge_weight is not None:
+                edge_index = self._filter_zero_weight_edges(edge_index, edge_weight)
+            x = conv(x, edge_index)
         x = norm(x)
         return self.nonlinearity(x)
+
+    @staticmethod
+    def _conv_supports_edge_weight(conv: torch.nn.Module) -> bool:
+        params = inspect.signature(conv.forward).parameters
+        return "edge_weight" in params
+
+    @staticmethod
+    def _filter_zero_weight_edges(edge_index: Tensor, edge_weight: Tensor) -> Tensor:
+        keep_mask = edge_weight != 0
+        if bool(keep_mask.all()):
+            return edge_index
+        return edge_index[:, keep_mask]
 
     def _readout_before_pool(self, x: Tensor, batch: Tensor) -> Optional[Tensor]:
         return None
