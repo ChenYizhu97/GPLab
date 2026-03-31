@@ -19,17 +19,19 @@ def main(
         model_config: Annotated[str, typer.Option()] = "config/model.toml",
         experiment_config: Annotated[str, typer.Option()] = "config/experiment.toml",
         comment: Annotated[Optional[str], typer.Option()] = None,
-        seed_mode: Annotated[Optional[str], typer.Option(help="Seed source mode: auto or file.")] = None,
+        seed_mode: Annotated[Optional[str], typer.Option(help="Seed source mode: auto, file, or list.")] = None,
         seed_base: Annotated[Optional[int], typer.Option(help="Base integer for deterministic seed generation in auto mode.")] = None,
-        allow_duplicate_seeds: Annotated[Optional[bool], typer.Option(help="Allow duplicate seeds in file mode.")] = None,
+        seed_list: Annotated[Optional[str], typer.Option(help="Comma-separated seed list for exact replay, for example: 11,22,33")] = None,
+        allow_duplicate_seeds: Annotated[Optional[bool], typer.Option(help="Allow duplicate seeds in file or list mode.")] = None,
 ):
     model_conf = toml.load(model_config)
     experiment_conf = toml.load(experiment_config)
 
     exp = experiment_conf.get("experiment", {})
-    final_seed_mode, final_seed_base, final_allow_dup = resolve_seed_options(
+    final_seed_mode, final_seed_base, final_allow_dup, final_seed_list = resolve_seed_options(
         seed_mode=seed_mode,
         seed_base=seed_base,
+        seed_list=seed_list,
         allow_duplicate_seeds=allow_duplicate_seeds,
         expr_conf=exp,
     )
@@ -44,6 +46,7 @@ def main(
         comment=comment,
         seed_mode=final_seed_mode,
         seed_base=final_seed_base,
+        seed_list=final_seed_list,
         allow_duplicate_seeds=final_allow_dup,
     )
     record = run_experiment(conf)

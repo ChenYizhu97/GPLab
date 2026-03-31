@@ -37,8 +37,10 @@ GPLab/
     config.py                # experiment request normalization
     runner.py                # experiment orchestration
     record.py                # result/repro record assembly
+    repro.py                 # repro schema and protocol identity helpers
   training.py                # training and evaluation loops
   querry.py                  # JSONL query tool
+  replay.py                  # replay one JSONL record via temp configs
   model/
     Model.py                 # shared graph classifier backbone
     Classifer_Sum.py         # sum model variant
@@ -115,7 +117,23 @@ python3 main.py \
   --pool-ratio 0.5 \
   --dataset PROTEINS \
   --log-file runs/bench.jsonl \
-  --comment "purpose=baseline;date=2026-03-31"
+  --comment "baseline_proteins_20260331"
+```
+
+Recommended `--comment` style:
+
+- use short, shell-safe tokens such as `baseline_proteins_20260331`
+- avoid separators such as `;`, `|`, `&`, or nested quotes when launching through multiple shells
+
+Replay an exact logged seed sequence without depending on `config/seeds`:
+
+```bash
+python3 main.py \
+  --pool sparsepool \
+  --pool-ratio 0.5 \
+  --dataset PROTEINS \
+  --seed-mode list \
+  --seed-list 101,202,303
 ```
 
 Batch script example:
@@ -150,6 +168,12 @@ Query a JSONL log file:
 python3 querry.py --log-file runs/bench.jsonl
 ```
 
+Show the replay command for each matched record:
+
+```bash
+python3 querry.py --log-file runs/bench.jsonl --show-replay
+```
+
 Filter by model variant:
 
 ```bash
@@ -158,6 +182,32 @@ python3 querry.py --log-file runs/bench.jsonl --model-type plain
 
 `querry.py` reads `model.variant` from each record and defaults missing values to `sum`
 for backward compatibility with older logs.
+
+## Reproducing a Logged Run
+
+Each current record includes a `repro` block with:
+
+- `protocol_digest`
+- `split_digest`
+- exact `seeds`
+- a `replay` section with preferred replay settings
+
+Recommended workflow:
+
+```bash
+python3 querry.py --log-file runs/bench.jsonl --show-replay
+python3 replay.py --log-file runs/bench.jsonl --record-id <record_id>
+python3 replay.py --log-file runs/bench.jsonl --record-id <record_id> --run
+```
+
+`replay.py` writes temporary configs under `/tmp/gplab_replay/`, then replays the record with `--seed-mode list --seed-list ...`.
+
+When checking whether two runs are truly comparable, compare at least:
+
+- `repro.protocol_digest`
+- `repro.split_digest`
+- `repro.seeds`
+- `repro.env`
 
 ## Models
 

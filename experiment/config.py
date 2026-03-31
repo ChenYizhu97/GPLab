@@ -44,6 +44,7 @@ def build_experiment_config(
     comment: Optional[str],
     seed_mode: str,
     seed_base: Optional[int],
+    seed_list: Optional[list[int]],
     allow_duplicate_seeds: bool,
 ) -> dict:
     validate_dataset(dataset_name)
@@ -65,6 +66,7 @@ def build_experiment_config(
     expr_conf["val_ratio"] = val_ratio
     expr_conf["seed_mode"] = seed_mode
     expr_conf["seed_base"] = seed_base
+    expr_conf["seed_list"] = seed_list
     expr_conf["allow_duplicate_seeds"] = allow_duplicate_seeds
     conf["model"]["variant"] = model_type
 

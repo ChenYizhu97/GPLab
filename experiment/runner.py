@@ -11,6 +11,7 @@ from torcheval.metrics import Mean, MulticlassAccuracy
 from tqdm import tqdm
 
 from experiment.record import attach_repro, attach_results, attach_runtime_meta
+from experiment.repro import build_protocol_digest
 from model.Classifer_Sum import GRAPH_CLASSIFIER_SUM
 from model.Classifer_plain import GRAPH_CLASSIFIER_PLAIN
 from training import test, train
@@ -44,6 +45,7 @@ def _prepare_split_metadata(conf: dict, dataset_size: int) -> list[dict]:
         seed_mode=expr_conf["seed_mode"],
         seeds_path=expr_conf.get("seeds"),
         seed_base=expr_conf["seed_base"] if expr_conf["seed_base"] is not None else 20260320,
+        seed_list=expr_conf.get("seed_list"),
         allow_duplicate_seeds=expr_conf["allow_duplicate_seeds"],
     )
     expr_conf["seeds"] = seeds
@@ -143,6 +145,7 @@ def run_experiment(conf: dict) -> dict:
     rprint(summary(model, data=dataset[0].to(device), leaf_module=None, max_depth=5))
 
     split_indices_all = _prepare_split_metadata(conf, len(dataset))
+    conf["experiment"]["protocol_digest"] = build_protocol_digest(conf)
     metrics = _build_metrics(device, dataset.num_classes)
 
     loss_list = []

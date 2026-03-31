@@ -1,17 +1,21 @@
+import shlex
 import typer
 from typing_extensions import Optional, Annotated
 import numpy as np
+from experiment.identity import ensure_record_id
 from utils.cli import validate_dataset, validate_model_type, validate_pool
 from utils.jsonl import read_jsonl
 
 app = typer.Typer(pretty_exceptions_enable=False)
 REQUIRED_REPRO_FIELDS = [
+    "protocol_digest",
     "seed_mode",
     "seeds",
     "split_digest",
     "split_ratio",
     "dataset_id",
     "env",
+    "replay",
 ]
 
 
@@ -19,24 +23,24 @@ def _load_jsonl(path: str) -> list[dict]:
     return read_jsonl(path)
 
 
-def _filter_pool(pool: str, data: list[dict]):
-    return filter(lambda x: x.get("pool", {}).get("method") == pool, data)
+def _filter_pool(pool: str, data):
+    return filter(lambda record: record.get("pool", {}).get("method") == pool, data)
 
 
-def _filter_dataset(dataset: str, data: list[dict]):
-    return filter(lambda x: x.get("dataset", "").lower() == dataset.lower(), data)
+def _filter_dataset(dataset: str, data):
+    return filter(lambda record: record.get("dataset", "").lower() == dataset.lower(), data)
 
 
-def _filter_comment(comment: str, data: list[dict]):
-    return filter(lambda x: x.get("comment", "") == comment, data)
+def _filter_comment(comment: str, data):
+    return filter(lambda record: record.get("comment", "") == comment, data)
 
 
-def _filter_model_type(model_type: str, data: list[dict]):
-    return filter(lambda x: x.get("model", {}).get("variant", "sum") == model_type, data)
+def _filter_model_type(model_type: str, data):
+    return filter(lambda record: record.get("model", {}).get("variant", "sum") == model_type, data)
 
 
 def _apply_filters(
-    records: list[dict],
+    records,
     dataset: Optional[str],
     pool: Optional[str],
     comment: Optional[str],
@@ -78,8 +82,17 @@ def _extract_repro(record: dict) -> tuple[Optional[dict], list[str]]:
     return repro, missing
 
 
-def _shape_output(record: dict, epoch: bool = False, show_repro: bool = False, verify_repro: bool = False):
+def _shape_output(
+    record: dict,
+    *,
+    log_file: str,
+    epoch: bool = False,
+    show_repro: bool = False,
+    verify_repro: bool = False,
+    show_replay: bool = False,
+):
     result = {**_read_default(record), **_read_statistic(record)}
+    result["record_id"] = record["record_id"]
 
     if epoch:
         result.update(_read_epochs(record))
@@ -97,6 +110,11 @@ def _shape_output(record: dict, epoch: bool = False, show_repro: bool = False, v
         result["repro_status"] = "ok" if not missing else "missing"
         result["missing_repro_fields"] = missing
 
+    if show_replay:
+        result["replay_command"] = (
+            f"python3 replay.py --log-file {shlex.quote(log_file)} --record-id {record['record_id']}"
+        )
+
     return result
 
 
@@ -110,9 +128,13 @@ def main(
         epoch: Annotated[bool, typer.Option()] = False,
         show_repro: Annotated[bool, typer.Option(help="Show reproducibility fields.")] = False,
         verify_repro: Annotated[bool, typer.Option(help="Verify reproducibility field completeness.")] = False,
+        show_replay: Annotated[bool, typer.Option(help="Show replay.py command for each matched record.")] = False,
 ):
-    if show_repro and verify_repro:
-        raise typer.BadParameter("Use only one of --show-repro or --verify-repro.", param_hint="--show-repro/--verify-repro")
+    if sum((show_repro, verify_repro, show_replay)) > 1:
+        raise typer.BadParameter(
+            "Use at most one of --show-repro, --verify-repro, or --show-replay.",
+            param_hint="--show-repro/--verify-repro/--show-replay",
+        )
 
     if dataset is not None:
         validate_dataset(dataset)
@@ -121,11 +143,20 @@ def main(
     if model_type is not None:
         validate_model_type(model_type)
 
-    records = _load_jsonl(log_file)
+    records = [ensure_record_id(record) for record in _load_jsonl(log_file)]
     records = _apply_filters(records, dataset, pool, comment, model_type)
 
     for record in records:
-        print(_shape_output(record, epoch, show_repro, verify_repro))
+        print(
+            _shape_output(
+                record,
+                log_file=log_file,
+                epoch=epoch,
+                show_repro=show_repro,
+                verify_repro=verify_repro,
+                show_replay=show_replay,
+            )
+        )
 
 
 if __name__ == "__main__":

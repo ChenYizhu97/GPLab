@@ -2,11 +2,16 @@ from typing import Optional
 
 import numpy as np
 
+from experiment.identity import ensure_record_id
+from experiment.repro import (
+    build_replay_block,
+)
 from utils.jsonl import append_jsonl
 
 
 def build_repro_block(conf: dict, seed_mode: str, seed_base: Optional[int], dataset_id: dict) -> dict:
     return {
+        "protocol_digest": conf["experiment"]["protocol_digest"],
         "seed_mode": seed_mode,
         "seed_base": seed_base,
         "seeds": conf["experiment"]["seeds"],
@@ -14,6 +19,7 @@ def build_repro_block(conf: dict, seed_mode: str, seed_base: Optional[int], data
         "split_ratio": conf["experiment"]["split_ratio"],
         "dataset_id": dataset_id,
         "env": conf["meta"],
+        "replay": build_replay_block(conf, seed_mode=seed_mode, seed_base=seed_base),
     }
 
 
@@ -43,6 +49,7 @@ def attach_results(conf: dict, *, val_loss: list[float], test_acc: list[float], 
 
 def attach_repro(conf: dict, *, seed_mode: str, seed_base: Optional[int], dataset_id: dict) -> dict:
     conf["repro"] = build_repro_block(conf, seed_mode=seed_mode, seed_base=seed_base, dataset_id=dataset_id)
+    ensure_record_id(conf)
     return conf
 
 

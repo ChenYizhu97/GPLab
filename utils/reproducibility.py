@@ -93,13 +93,28 @@ def resolve_seeds(
         seed_mode: str = "auto",
         seeds_path: Optional[str] = None,
         seed_base: int = 20260320,
+        seed_list: Optional[list[int]] = None,
         allow_duplicate_seeds: bool = False,
 ) -> list[int]:
     if runs <= 0:
         return []
 
-    if seed_mode not in {"auto", "file"}:
-        raise ValueError("seed_mode must be 'auto' or 'file'.")
+    if seed_mode not in {"auto", "file", "list"}:
+        raise ValueError("seed_mode must be 'auto', 'file', or 'list'.")
+
+    if seed_mode == "list":
+        if seed_list is None:
+            raise ValueError("seed_list is required when seed_mode='list'.")
+        if len(seed_list) != runs:
+            raise ValueError(
+                f"seed_list length must equal runs. Got {len(seed_list)} seeds for runs={runs}."
+            )
+        if (not allow_duplicate_seeds) and (len(set(seed_list)) != len(seed_list)):
+            raise ValueError(
+                "Duplicate seeds detected in list mode. "
+                "Set allow_duplicate_seeds=true only when intentionally replaying duplicate seeds."
+            )
+        return [int(seed) for seed in seed_list]
 
     if seed_mode == "file":
         if seeds_path is None:
