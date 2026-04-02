@@ -5,11 +5,13 @@ from pathlib import Path
 from typing import Optional
 
 import toml
+import torch
 import typer
 from typing_extensions import Annotated
 
 from experiment.identity import ensure_record_id
 from utils.jsonl import read_jsonl
+from utils.io import build_runtime_meta
 
 app = typer.Typer(pretty_exceptions_enable=False)
 
@@ -84,6 +86,26 @@ def _stringify_command(command: list[str]) -> str:
     return " ".join(shlex.quote(part) for part in command)
 
 
+def _current_runtime() -> dict:
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    return build_runtime_meta(device)
+
+
+def _compare_runtime(recorded: dict, current: dict) -> list[str]:
+    checks = [
+        ("python_version", "python"),
+        ("torch_version", "torch"),
+        ("torch_geometric_version", "torch_geometric"),
+        ("device", "device"),
+        ("cuda_available", "cuda_available"),
+    ]
+    mismatches = []
+    for key, label in checks:
+        if recorded.get(key) != current.get(key):
+            mismatches.append(f"{label}: recorded={recorded.get(key)!r}, current={current.get(key)!r}")
+    return mismatches
+
+
 @app.command()
 def main(
     log_file: Annotated[str, typer.Option(..., help="JSONL log file containing the record to replay.")],
@@ -105,6 +127,15 @@ def main(
 
     print(f"Replay directory: {target_dir}")
     print(f"Replay command: {_stringify_command(command)}")
+
+    current_runtime = _current_runtime()
+    mismatches = _compare_runtime(record.get("runtime", {}), current_runtime)
+    if mismatches:
+        print("Runtime compatibility warning:")
+        for item in mismatches:
+            print(f"  - {item}")
+    else:
+        print("Runtime compatibility: current environment matches recorded runtime on checked fields.")
 
     if run:
         subprocess.run(command, check=True, cwd=Path(__file__).resolve().parent)

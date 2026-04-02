@@ -4,7 +4,31 @@ GPLab is a lightweight benchmark project for graph pooling methods on graph clas
 
 Its purpose is simple: keep the training protocol, backbone, dataset handling, and logging format consistent so different pooling methods can be compared under the same setup.
 
-![GPLab](GPLab.png)
+```mermaid
+flowchart LR
+    A["Input Graphs"] --> B["Shared Backbone"]
+    B --> C{"Pooling"}
+    C --> D["Sparse Poolers"]
+    C --> E["Dense Poolers via Adapter"]
+    D --> F["Unified Downstream"]
+    E --> F
+    F --> G["Train / Validate / Test"]
+    G --> H["JSONL Records"]
+    H --> I["Query"]
+    H --> J["Replay"]
+```
+
+## At A Glance
+
+```mermaid
+flowchart LR
+    A["main.py"] --> B["Build Experiment Config"]
+    B --> C["Run Seeds"]
+    C --> D["GraphClassifierSum / GraphClassifierPlain"]
+    D --> E["Record spec + runtime + result"]
+    E --> F["query.py"]
+    E --> G["replay.py"]
+```
 
 ## What GPLab Does
 
@@ -27,6 +51,20 @@ The key design choice is the pooling protocol:
 - dense pooling methods are adapted through a dense-to-sparse bridge so they can reuse the same downstream sparse backbone.
 
 This keeps the post-pooling computation path aligned across methods and improves comparability.
+
+## Pooling Protocol
+
+```mermaid
+flowchart TD
+    A["Sparse graph batch"] --> B{"Pooling family"}
+    B --> C["Sparse pooling<br/>topk / sag / asap / sparsepool"]
+    B --> D["Dense pooling<br/>diffpool / mincutpool / densepool"]
+    C --> E["Direct sparse output"]
+    D --> F["Dense assignment + coarse adjacency"]
+    F --> G["PoolAdapter back to sparse"]
+    E --> H["Shared conv2 + readout"]
+    G --> H
+```
 
 ## Project Layout
 
@@ -72,23 +110,12 @@ GPLab/
 
 GPLab depends on PyTorch, PyG, and a small set of CLI/logging utilities.
 
-Required packages:
-
-- `torch`
-- `torch-geometric`
-- `torcheval`
-- `typer`
-- `toml`
-- `rich`
-- `tqdm`
-- `numpy`
-
 Example setup:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install torch torch-geometric torcheval typer toml rich tqdm numpy
+pip install -r requirements.txt
 ```
 
 ## Quick Start
@@ -141,6 +168,10 @@ Batch script example:
 bash utils/main.sh
 ```
 
+`utils/main.sh` is a small batch launcher for repeated pool x dataset runs. It
+can be customized with `PYTHON_CMD`, `POOLS`, `DATASETS`, `MODEL_TYPE`,
+`POOL_RATIO`, `LOG_FILE`, and `TAG`.
+
 Run a built-in smoke test across all built-in pools and TU datasets:
 
 ```bash
@@ -154,7 +185,7 @@ experiment records.
 If you want smoke runs to also emit JSONL records, pass `LOG_FILE`:
 
 ```bash
-LOG_FILE=runs/smoke.jsonl TAG_PREFIX=smoke PYTHON_CMD="conda run -n torch_env python3" bash utils/smoke_test.sh
+LOG_FILE=runs/smoke.jsonl TAG_PREFIX=smoke PYTHON_CMD="python3" bash utils/smoke_test.sh
 ```
 
 To limit the sweep, override `POOLS` or `DATASETS`:
@@ -166,7 +197,7 @@ POOLS="sagpool diffpool" DATASETS="MUTAG PROTEINS" bash utils/smoke_test.sh
 If your environment does not expose the correct Python by default, pass it explicitly:
 
 ```bash
-PYTHON_CMD="conda run -n torch_env python3" bash utils/smoke_test.sh
+PYTHON_CMD="python3" bash utils/smoke_test.sh
 ```
 
 ## Querying Logs
@@ -272,7 +303,9 @@ python3 replay.py --log-file runs/bench.jsonl --record-id <record_id> --run
 ```
 
 `replay.py` writes temporary configs under `/tmp/gplab_replay/`, then replays
-the record with the exact logged seed list.
+the record with the exact logged seed list. It also prints a checked-field
+runtime compatibility summary so you can see whether Python / Torch / PyG /
+device metadata still matches the original record.
 
 When checking whether two runs are truly comparable, compare at least:
 
@@ -365,7 +398,7 @@ Custom pooling is loaded with:
 Example:
 
 ```bash
-python3 main.py \
+python main.py \
   --pool examples.custom_pool_plugin:build_pool \
   --pool-ratio 0.6 \
   --dataset PROTEINS

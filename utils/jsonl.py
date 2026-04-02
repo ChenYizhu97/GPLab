@@ -7,7 +7,8 @@ def read_jsonl(path: str) -> list[dict]:
     if not log_path.exists():
         raise FileNotFoundError(f"Log file not found: {path}")
 
-    lines = [line for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    # Accept UTF-8 BOM so logs produced by external tools remain readable.
+    lines = [line for line in log_path.read_text(encoding="utf-8-sig").splitlines() if line.strip()]
     if not lines:
         raise ValueError(f"Log file is empty: {path}")
 
