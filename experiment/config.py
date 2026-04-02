@@ -41,7 +41,7 @@ def build_experiment_config(
     pool_ratio: float,
     dataset_name: str,
     model_type: str,
-    comment: Optional[str],
+    tag: Optional[str],
     seed_mode: str,
     seed_base: Optional[int],
     seed_list: Optional[list[int]],
@@ -74,14 +74,9 @@ def build_experiment_config(
         "method": pool,
         "ratio": pool_ratio,
         "source": "custom_factory" if is_custom_pool else "builtin",
-        "protocol": "unified_adapter",
-        "protocol_note": (
-            "DiffPool/Mincut/DensePool currently use unified dense-to-sparse adapter in this benchmark; "
-            "paper-style dense backbone path is intentionally ignored for now."
-        ),
     }
     conf["dataset"] = dataset_name
-    if comment is not None:
-        conf["comment"] = comment
+    if tag is not None:
+        conf["tag"] = tag
 
     return conf

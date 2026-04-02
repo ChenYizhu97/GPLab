@@ -34,8 +34,16 @@ DEFAULT_DATASETS=(
 CONFIG_PATH="${CONFIG_PATH:-/tmp/gplab_smoke_experiment.toml}"
 SEEDS_PATH="${SEEDS_PATH:-/tmp/gplab_smoke_seeds}"
 RESULTS_PATH="${RESULTS_PATH:-/tmp/gplab_smoke_results.tsv}"
+LOG_FILE="${LOG_FILE:-}"
+TAG_PREFIX="${TAG_PREFIX:-smoke}"
 PYTHON_CMD="${PYTHON_CMD:-python3}"
 POOL_RATIO="${POOL_RATIO:-0.5}"
+RUNS="${RUNS:-1}"
+LR="${LR:-0.0005}"
+BATCH_SIZE="${BATCH_SIZE:-16}"
+PATIENCE="${PATIENCE:-0}"
+EPOCHS="${EPOCHS:-1}"
+SEED_BASE="${SEED_BASE:-20260320}"
 
 if [ -n "${POOLS:-}" ]; then
   # shellcheck disable=SC2206
@@ -53,14 +61,14 @@ fi
 
 cat >"$CONFIG_PATH" <<EOF
 [experiment]
-runs = 1
-lr = 0.0005
-batch_size = 16
-patience = 0
-epochs = 1
+runs = $RUNS
+lr = $LR
+batch_size = $BATCH_SIZE
+patience = $PATIENCE
+epochs = $EPOCHS
 seeds = "$SEEDS_PATH"
 seed_mode = "auto"
-seed_base = 20260320
+seed_base = $SEED_BASE
 allow_duplicate_seeds = false
 train_ratio = 0.8
 val_ratio = 0.1
@@ -80,7 +88,11 @@ fi
 for pool in "${POOL_LIST[@]}"; do
   for dataset in "${DATASET_LIST[@]}"; do
     start="$(date +%s)"
-    sh -c "$PYTHON_CMD main.py --pool \"$pool\" --pool-ratio \"$POOL_RATIO\" --dataset \"$dataset\" --experiment-config \"$CONFIG_PATH\"" \
+    cmd="$PYTHON_CMD main.py --pool \"$pool\" --pool-ratio \"$POOL_RATIO\" --dataset \"$dataset\" --experiment-config \"$CONFIG_PATH\" --tag \"${TAG_PREFIX}_${pool}_${dataset}\""
+    if [ -n "$LOG_FILE" ]; then
+      cmd="$cmd --log-file \"$LOG_FILE\""
+    fi
+    sh -c "$cmd" \
       >/tmp/gplab_smoke_stdout.log 2>/tmp/gplab_smoke_stderr.log
     exit_code=$?
     end="$(date +%s)"

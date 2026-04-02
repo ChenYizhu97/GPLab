@@ -14,19 +14,7 @@ from utils.jsonl import read_jsonl
 app = typer.Typer(pretty_exceptions_enable=False)
 
 
-def _drop_none(value):
-    if isinstance(value, dict):
-        return {key: _drop_none(item) for key, item in value.items() if item is not None}
-    if isinstance(value, list):
-        return [_drop_none(item) for item in value]
-    return value
-
-
-def _pick_record(
-    records: list[dict],
-    *,
-    record_id: str,
-) -> dict:
+def _pick_record(records: list[dict], *, record_id: str) -> dict:
     for record in records:
         if record["record_id"] == record_id:
             return record
@@ -37,10 +25,8 @@ def _pick_record(
 
 
 def _replay_dir(base_dir: str, record: dict) -> Path:
-    protocol_digest = record.get("repro", {}).get("protocol_digest", "unknown")
-    pool_name = record.get("pool", {}).get("method", "unknown")
-    dataset_name = record.get("dataset", "unknown")
-    return Path(base_dir) / f"{record['record_id']}_{dataset_name}_{pool_name}_{protocol_digest[:8]}"
+    spec = record["spec"]
+    return Path(base_dir) / f"{record['record_id']}_{spec['dataset']}_{spec['pool']['name']}"
 
 
 def _materialize_configs(target_dir: Path, record: dict) -> tuple[Path, Path]:
@@ -48,66 +34,47 @@ def _materialize_configs(target_dir: Path, record: dict) -> tuple[Path, Path]:
     model_path = target_dir / "model.toml"
     experiment_path = target_dir / "experiment.toml"
 
-    experiment = record["experiment"]
-    experiment_keys = [
-        "runs",
-        "lr",
-        "batch_size",
-        "patience",
-        "epochs",
-        "seeds",
-        "seed_mode",
-        "seed_base",
-        "seed_list",
-        "allow_duplicate_seeds",
-        "train_ratio",
-        "val_ratio",
-    ]
-    model_payload = {"model": _drop_none(record["model"])}
-    experiment_payload = {
-        "experiment": _drop_none({key: experiment[key] for key in experiment_keys if key in experiment})
-    }
+    spec = record["spec"]
+    model_path.write_text(toml.dumps({"model": spec["model"]}), encoding="utf-8")
 
-    model_path.write_text(toml.dumps(model_payload), encoding="utf-8")
+    split = spec["train"]["split"]
+    experiment_payload = {
+        "experiment": {
+            "runs": len(spec["train"]["seeds"]),
+            "lr": spec["train"]["lr"],
+            "batch_size": spec["train"]["batch_size"],
+            "patience": spec["train"]["patience"],
+            "epochs": spec["train"]["epochs"],
+            "train_ratio": split["train"],
+            "val_ratio": split["val"],
+        }
+    }
     experiment_path.write_text(toml.dumps(experiment_payload), encoding="utf-8")
     return model_path, experiment_path
 
 
-def _build_command(
-    *,
-    model_path: Path,
-    experiment_path: Path,
-    record: dict,
-    replay_log_file: Optional[str],
-) -> list[str]:
-    repro = record.get("repro", {})
-    replay = repro.get("replay", {})
-    seed_list = replay.get("seed_list") or repro.get("seeds")
-    if not seed_list:
-        raise ValueError("Record is missing repro seed information required for replay.")
-
+def _build_command(*, model_path: Path, experiment_path: Path, record: dict, replay_log_file: Optional[str]) -> list[str]:
+    spec = record["spec"]
     command = [
         sys.executable,
         "main.py",
         "--pool",
-        record["pool"]["method"],
+        spec["pool"]["name"],
         "--pool-ratio",
-        str(record["pool"]["ratio"]),
+        str(spec["pool"]["ratio"]),
         "--dataset",
-        record["dataset"],
+        spec["dataset"],
         "--model-type",
-        record.get("model", {}).get("variant", "sum"),
+        spec["model"].get("variant", "sum"),
         "--model-config",
         str(model_path),
         "--experiment-config",
         str(experiment_path),
-        "--seed-mode",
-        "list",
         "--seed-list",
-        ",".join(str(seed) for seed in seed_list),
+        ",".join(str(seed) for seed in spec["train"]["seeds"]),
     ]
-    if record.get("comment") is not None:
-        command.extend(["--comment", record["comment"]])
+    if record.get("tag") is not None:
+        command.extend(["--tag", record["tag"]])
     if replay_log_file is not None:
         command.extend(["--log-file", replay_log_file])
     return command
@@ -138,8 +105,6 @@ def main(
 
     print(f"Replay directory: {target_dir}")
     print(f"Replay command: {_stringify_command(command)}")
-    print(f"Expected split_digest: {record.get('repro', {}).get('split_digest', 'unknown')}")
-    print(f"Expected protocol_digest: {record.get('repro', {}).get('protocol_digest', 'unknown')}")
 
     if run:
         subprocess.run(command, check=True, cwd=Path(__file__).resolve().parent)

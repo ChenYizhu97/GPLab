@@ -1,7 +1,3 @@
-import hashlib
-import json
-from decimal import Decimal
-
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -10,12 +6,11 @@ from torch_geometric.nn import summary
 from torcheval.metrics import Mean, MulticlassAccuracy
 from tqdm import tqdm
 
-from experiment.record import attach_repro, attach_results, attach_runtime_meta
-from experiment.repro import build_protocol_digest
+from experiment.record import build_record
 from model.classifier_plain import GraphClassifierPlain
 from model.classifier_sum import GraphClassifierSum
 from training import test, train
-from utils.dataset import build_dataset_id, build_split_indices, load_dataset, split_dataset
+from utils.dataset import build_split_indices, load_dataset, split_dataset
 from utils.io import build_runtime_meta, print_expr_info, sep_c
 from utils.reproducibility import (
     configure_runtime_threads,
@@ -59,17 +54,6 @@ def _prepare_split_metadata(conf: dict, dataset_size: int) -> list[dict]:
         )
         for seed in seeds
     ]
-
-    split_digest = hashlib.sha1(json.dumps(split_indices_all, sort_keys=True).encode("utf-8")).hexdigest()
-    train_ratio_dec = Decimal(str(expr_conf["train_ratio"]))
-    val_ratio_dec = Decimal(str(expr_conf["val_ratio"]))
-    test_ratio_dec = Decimal("1") - train_ratio_dec - val_ratio_dec
-    expr_conf["split_digest"] = split_digest
-    expr_conf["split_ratio"] = {
-        "train": float(train_ratio_dec),
-        "val": float(val_ratio_dec),
-        "test": float(test_ratio_dec),
-    }
     return split_indices_all
 
 
@@ -131,7 +115,7 @@ def run_experiment(conf: dict) -> dict:
     configure_runtime_threads()
     set_np_and_torch(0)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    attach_runtime_meta(conf, build_runtime_meta(device))
+    runtime = build_runtime_meta(device)
     print_expr_info(conf, device)
 
     dataset = load_dataset(conf["dataset"])
@@ -145,12 +129,8 @@ def run_experiment(conf: dict) -> dict:
     rprint(summary(model, data=dataset[0].to(device), leaf_module=None, max_depth=5))
 
     split_indices_all = _prepare_split_metadata(conf, len(dataset))
-    conf["experiment"]["protocol_digest"] = build_protocol_digest(conf)
     metrics = _build_metrics(device, dataset.num_classes)
 
-    loss_list = []
-    acc_list = []
-    epoch_list = []
     run_records = []
     expr_conf = conf["experiment"]
 
@@ -168,22 +148,6 @@ def run_experiment(conf: dict) -> dict:
         if run_idx != expr_conf["runs"]:
             rprint(sep_c("-"))
 
-        loss_list.append(run_record["best_val_loss"])
-        acc_list.append(run_record["best_test_acc"])
-        epoch_list.append(run_record["best_epoch"])
         run_records.append(run_record)
 
-    attach_results(
-        conf,
-        val_loss=loss_list,
-        test_acc=acc_list,
-        epochs_stop=epoch_list,
-        runs=run_records,
-    )
-    attach_repro(
-        conf,
-        seed_mode=expr_conf["seed_mode"],
-        seed_base=expr_conf["seed_base"],
-        dataset_id=build_dataset_id(conf["dataset"], dataset),
-    )
-    return conf
+    return build_record(conf, runtime=runtime, run_records=run_records)

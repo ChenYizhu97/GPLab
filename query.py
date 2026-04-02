@@ -1,3 +1,5 @@
+import hashlib
+import json
 import shlex
 
 import numpy as np
@@ -9,115 +11,114 @@ from utils.cli import validate_dataset, validate_model_type, validate_pool
 from utils.jsonl import read_jsonl
 
 app = typer.Typer(pretty_exceptions_enable=False)
-REQUIRED_REPRO_FIELDS = [
-    "protocol_digest",
-    "seed_mode",
-    "seeds",
-    "split_digest",
-    "split_ratio",
-    "dataset_id",
-    "env",
-    "replay",
-]
 
 
 def _load_jsonl(path: str) -> list[dict]:
-    return read_jsonl(path)
+    return [ensure_record_id(record) for record in read_jsonl(path)]
 
 
-def _filter_pool(pool: str, data):
-    return filter(lambda record: record.get("pool", {}).get("method") == pool, data)
+def _record_summary(record: dict) -> dict:
+    runs = record["result"]["runs"]
+    test_acc = [float(run["best_test_acc"]) for run in runs]
+    val_loss = [float(run["best_val_loss"]) for run in runs]
+    epochs = [int(run["best_epoch"]) for run in runs]
+
+    corr = None
+    if len(runs) >= 2 and np.std(val_loss) != 0 and np.std(test_acc) != 0:
+        corr = float(np.corrcoef(val_loss, test_acc)[0, 1])
+
+    summary = {
+        "record_id": record["record_id"],
+        "dataset": record["spec"]["dataset"],
+        "pool": record["spec"]["pool"]["name"],
+        "pool_ratio": record["spec"]["pool"]["ratio"],
+        "model_type": record["spec"]["model"].get("variant", "sum"),
+        "runs": len(runs),
+        "mean": float(record["result"]["mean"]),
+        "std": float(record["result"]["std"]),
+        "avg_best_epoch": float(np.mean(epochs)),
+        "avg_val_loss": float(np.mean(val_loss)),
+        "best_test_acc": float(max(test_acc)),
+        "worst_test_acc": float(min(test_acc)),
+        "val_loss_test_acc_corr": corr,
+    }
+    if "tag" in record:
+        summary["tag"] = record["tag"]
+    return summary
 
 
-def _filter_dataset(dataset: str, data):
-    return filter(lambda record: record.get("dataset", "").lower() == dataset.lower(), data)
+def _matches(record: dict, *, dataset: Optional[str], pool: Optional[str], tag: Optional[str], model_type: Optional[str]) -> bool:
+    spec = record["spec"]
+    if dataset is not None and spec["dataset"].lower() != dataset.lower():
+        return False
+    if pool is not None and spec["pool"]["name"] != pool:
+        return False
+    if tag is not None and record.get("tag") != tag:
+        return False
+    if model_type is not None and spec["model"].get("variant", "sum") != model_type:
+        return False
+    return True
 
 
-def _filter_comment(comment: str, data):
-    return filter(lambda record: record.get("comment", "") == comment, data)
+def _benchmark_key(record: dict) -> str:
+    spec = record["spec"]
+    payload = {
+        "dataset": spec["dataset"],
+        "model": spec["model"],
+        "train": spec["train"],
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha1(encoded).hexdigest()[:12]
 
 
-def _filter_model_type(model_type: str, data):
-    return filter(lambda record: record.get("model", {}).get("variant", "sum") == model_type, data)
+def _group_header(records: list[dict]) -> str:
+    first = records[0]
+    spec = first["spec"]
+    tags = sorted({record.get("tag") for record in records if record.get("tag") is not None})
+    parts = [
+        f"dataset={spec['dataset']}",
+        f"model={spec['model'].get('variant', 'sum')}",
+        f"benchmark={_benchmark_key(first)}",
+    ]
+    if len(tags) == 1:
+        parts.append(f"tag={tags[0]}")
+    elif len(tags) > 1:
+        parts.append(f"tags={len(tags)}")
+    return " | ".join(parts)
 
 
-def _apply_filters(
-    records,
-    dataset: Optional[str],
-    pool: Optional[str],
-    comment: Optional[str],
-    model_type: Optional[str],
-):
-    filtered = records
-    if dataset is not None:
-        filtered = _filter_dataset(dataset, filtered)
-    if pool is not None:
-        filtered = _filter_pool(pool, filtered)
-    if comment is not None:
-        filtered = _filter_comment(comment, filtered)
-    if model_type is not None:
-        filtered = _filter_model_type(model_type, filtered)
-    return filtered
+def _sort_value(record: dict, sort_by: str) -> float:
+    summary = _record_summary(record)
+    return float(summary[sort_by])
 
 
-def _read_epochs(record: dict):
-    return {"avg_best_epoch": float(np.mean(record["results"]["data"]["epochs_stop"]))}
+def _print_report(records: list[dict], sort_by: str) -> None:
+    groups: dict[str, list[dict]] = {}
+    for record in records:
+        groups.setdefault(_benchmark_key(record), []).append(record)
 
-
-def _read_statistic(record: dict):
-    return record["results"]["statistic"]
-
-
-def _read_default(record: dict):
-    default = {**record["pool"], "dataset": record["dataset"]}
-    default["model_type"] = record.get("model", {}).get("variant", "sum")
-    if "comment" in record:
-        default["comment"] = record["comment"]
-    return default
-
-
-def _extract_repro(record: dict) -> tuple[Optional[dict], list[str]]:
-    repro = record.get("repro")
-    if repro is None:
-        return None, list(REQUIRED_REPRO_FIELDS)
-    missing = [field for field in REQUIRED_REPRO_FIELDS if field not in repro]
-    return repro, missing
-
-
-def _shape_output(
-    record: dict,
-    *,
-    log_file: str,
-    epoch: bool = False,
-    show_repro: bool = False,
-    verify_repro: bool = False,
-    show_replay: bool = False,
-):
-    result = {**_read_default(record), **_read_statistic(record)}
-    result["record_id"] = record["record_id"]
-
-    if epoch:
-        result.update(_read_epochs(record))
-
-    if show_repro:
-        repro, missing = _extract_repro(record)
-        if repro is None:
-            raise ValueError("Record missing top-level 'repro'.")
-        if missing:
-            raise ValueError(f"Record has incomplete repro fields: {missing}")
-        result["repro"] = repro
-
-    if verify_repro:
-        _, missing = _extract_repro(record)
-        result["repro_status"] = "ok" if not missing else "missing"
-        result["missing_repro_fields"] = missing
-
-    if show_replay:
-        result["replay_command"] = (
-            f"python3 replay.py --log-file {shlex.quote(log_file)} --record-id {record['record_id']}"
+    for group in groups.values():
+        ranked = sorted(
+            group,
+            key=lambda record: _sort_value(record, sort_by),
+            reverse=sort_by not in {"std", "avg_val_loss", "avg_best_epoch"},
         )
-
-    return result
+        print(_group_header(ranked))
+        for index, record in enumerate(ranked, start=1):
+            summary = _record_summary(record)
+            corr = summary["val_loss_test_acc_corr"]
+            corr_text = "n/a" if corr is None else f"{corr:.4f}"
+            print(
+                f"{index}. pool={summary['pool']} ratio={summary['pool_ratio']} "
+                f"mean={summary['mean']:.4f} std={summary['std']:.4f} "
+                f"avg_epoch={summary['avg_best_epoch']:.1f} avg_val_loss={summary['avg_val_loss']:.6f} "
+                f"val_test_corr={corr_text} record_id={summary['record_id']}"
+            )
+        print(
+            "Interpretation: compare mean first, then use std for stability, avg_epoch for early-stop behavior, "
+            "and val_test_corr to judge whether lower validation loss really aligned with better test accuracy."
+        )
+        print()
 
 
 @app.command()
@@ -126,16 +127,16 @@ def main(
     pool: Annotated[Optional[str], typer.Option()] = None,
     dataset: Annotated[Optional[str], typer.Option()] = None,
     model_type: Annotated[Optional[str], typer.Option(help="Filter by model variant: sum or plain.")] = None,
-    comment: Annotated[Optional[str], typer.Option()] = None,
-    epoch: Annotated[bool, typer.Option()] = False,
-    show_repro: Annotated[bool, typer.Option(help="Show reproducibility fields.")] = False,
-    verify_repro: Annotated[bool, typer.Option(help="Verify reproducibility field completeness.")] = False,
+    tag: Annotated[Optional[str], typer.Option(help="Filter by experiment tag.")] = None,
+    report: Annotated[bool, typer.Option(help="Print grouped benchmark report instead of one summary dict per record.")] = False,
+    sort_by: Annotated[str, typer.Option(help="Report sort field: mean, std, avg_best_epoch, avg_val_loss.")] = "mean",
+    show_spec: Annotated[bool, typer.Option(help="Include the full spec block in default output.")] = False,
     show_replay: Annotated[bool, typer.Option(help="Show replay.py command for each matched record.")] = False,
 ):
-    if sum((show_repro, verify_repro, show_replay)) > 1:
+    if sort_by not in {"mean", "std", "avg_best_epoch", "avg_val_loss"}:
         raise typer.BadParameter(
-            "Use at most one of --show-repro, --verify-repro, or --show-replay.",
-            param_hint="--show-repro/--verify-repro/--show-replay",
+            "sort_by must be one of: mean, std, avg_best_epoch, avg_val_loss.",
+            param_hint="--sort-by",
         )
 
     if dataset is not None:
@@ -145,20 +146,25 @@ def main(
     if model_type is not None:
         validate_model_type(model_type)
 
-    records = [ensure_record_id(record) for record in _load_jsonl(log_file)]
-    records = _apply_filters(records, dataset, pool, comment, model_type)
+    records = [
+        record
+        for record in _load_jsonl(log_file)
+        if _matches(record, dataset=dataset, pool=pool, tag=tag, model_type=model_type)
+    ]
+
+    if report:
+        _print_report(records, sort_by)
+        return
 
     for record in records:
-        print(
-            _shape_output(
-                record,
-                log_file=log_file,
-                epoch=epoch,
-                show_repro=show_repro,
-                verify_repro=verify_repro,
-                show_replay=show_replay,
+        summary = _record_summary(record)
+        if show_spec:
+            summary["spec"] = record["spec"]
+        if show_replay:
+            summary["replay_command"] = (
+                f"python3 replay.py --log-file {shlex.quote(log_file)} --record-id {record['record_id']}"
             )
-        )
+        print(summary)
 
 
 if __name__ == "__main__":

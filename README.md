@@ -36,8 +36,7 @@ GPLab/
   experiment/
     config.py                # experiment request normalization
     runner.py                # experiment orchestration
-    record.py                # result/repro record assembly
-    repro.py                 # repro schema and protocol identity helpers
+    record.py                # spec/runtime/result record assembly
   training.py                # training and evaluation loops
   query.py                   # JSONL query tool
   replay.py                  # replay one JSONL record via temp configs
@@ -106,7 +105,7 @@ Run the plain model instead of the sum model:
 python3 main.py --pool sagpool --pool-ratio 0.5 --dataset PROTEINS --model-type plain
 ```
 
-`--model-type` is persisted in experiment logs as `model.variant`, so `sum`
+`--model-type` is persisted in experiment logs as `spec.model.variant`, so `sum`
 and `plain` runs remain distinguishable in JSONL records and downstream queries.
 
 Append the result to a JSONL file:
@@ -117,10 +116,10 @@ python3 main.py \
   --pool-ratio 0.5 \
   --dataset PROTEINS \
   --log-file runs/bench.jsonl \
-  --comment "baseline_proteins_20260331"
+  --tag baseline_proteins_20260331
 ```
 
-Recommended `--comment` style:
+Recommended `--tag` style:
 
 - use short, shell-safe tokens such as `baseline_proteins_20260331`
 - avoid separators such as `;`, `|`, `&`, or nested quotes when launching through multiple shells
@@ -152,6 +151,12 @@ bash utils/smoke_test.sh
 to `/tmp/gplab_smoke_results.tsv` by default and does not append JSONL
 experiment records.
 
+If you want smoke runs to also emit JSONL records, pass `LOG_FILE`:
+
+```bash
+LOG_FILE=runs/smoke.jsonl TAG_PREFIX=smoke PYTHON_CMD="conda run -n torch_env python3" bash utils/smoke_test.sh
+```
+
 To limit the sweep, override `POOLS` or `DATASETS`:
 
 ```bash
@@ -172,6 +177,22 @@ Query a JSONL log file:
 python3 query.py --log-file runs/bench.jsonl
 ```
 
+Default query output now uses one unified record summary schema. Each matched
+record includes:
+
+- `record_id`
+- `dataset`
+- `pool`
+- `pool_ratio`
+- `model_type`
+- `tag` when present
+- `runs`
+- `mean`
+- `std`
+- `avg_best_epoch`
+- `avg_val_loss`
+- `val_loss_test_acc_corr`
+
 Show the replay command for each matched record:
 
 ```bash
@@ -184,16 +205,63 @@ Filter by model variant:
 python3 query.py --log-file runs/bench.jsonl --model-type plain
 ```
 
-`query.py` reads `model.variant` from each record.
+`query.py` reads `spec.model.variant` from each record.
+
+Show the full `spec` block for matched records:
+
+```bash
+python3 query.py --log-file runs/bench.jsonl --show-spec
+```
+
+Print a grouped benchmark-style report:
+
+```bash
+python3 query.py --log-file runs/bench.jsonl --report
+```
+
+`--report` groups matched records by one benchmark key derived from:
+
+- `spec.dataset`
+- `spec.model`
+- `spec.train`
+
+It intentionally excludes `spec.pool`, so different pooling methods are ranked
+inside the same comparable benchmark group.
+
+Sort the grouped report by stability or validation loss instead of mean:
+
+```bash
+python3 query.py --log-file runs/bench.jsonl --report --sort-by std
+python3 query.py --log-file runs/bench.jsonl --report --sort-by avg_val_loss
+```
+
+Recommended benchmark comparison template:
+
+- keep `dataset`, `model`, and `train` settings aligned before comparing pools
+- compare `mean` first, then read `std` as the stability signal
+- use `avg_best_epoch` to understand early-stop behavior rather than quality by itself
+- read `avg_val_loss` together with `val_loss_test_acc_corr`
+- if validation loss is low but `test_acc` is unstable or correlation is weak, treat the conclusion as less reliable
+
+Recommended `tag` convention:
+
+- use short shell-safe tags such as `baseline_proteins_20260402`
+- keep one experiment family on one tag when possible
+- if extra structure is helpful, prefer flat key-value style such as `phaseD_sum_proteins_baseline`
 
 ## Reproducing a Logged Run
 
-Each current record includes a `repro` block with:
+Each current record stores all replay-critical inputs in `spec`:
 
-- `protocol_digest`
-- `split_digest`
-- exact `seeds`
-- a `replay` section with preferred replay settings
+- `spec.dataset`
+- `spec.model`
+- `spec.pool`
+- `spec.train.seeds`
+- `spec.train.split`
+- `spec.train.lr`
+- `spec.train.batch_size`
+- `spec.train.patience`
+- `spec.train.epochs`
 
 Recommended workflow:
 
@@ -203,14 +271,15 @@ python3 replay.py --log-file runs/bench.jsonl --record-id <record_id>
 python3 replay.py --log-file runs/bench.jsonl --record-id <record_id> --run
 ```
 
-`replay.py` writes temporary configs under `/tmp/gplab_replay/`, then replays the record with `--seed-mode list --seed-list ...`.
+`replay.py` writes temporary configs under `/tmp/gplab_replay/`, then replays
+the record with the exact logged seed list.
 
 When checking whether two runs are truly comparable, compare at least:
 
-- `repro.protocol_digest`
-- `repro.split_digest`
-- `repro.seeds`
-- `repro.env`
+- `spec.dataset`
+- `spec.model`
+- `spec.train`
+- `runtime`
 
 ## Models
 
@@ -376,55 +445,53 @@ Main experiment fields:
 
 ## Reproducibility
 
-GPLab tracks reproducibility at multiple levels:
+GPLab keeps reproducibility simple:
 
-- seeded Python / NumPy / Torch randomness;
-- seeded DataLoader generator;
-- deterministic split fingerprint via `split_digest`;
-- runtime environment metadata;
-- full experiment configuration recorded in each JSONL entry.
+- the log stores the exact seed list actually used;
+- the log stores the full replay-relevant experiment spec;
+- the runtime block stores the software/device context;
+- `replay.py` materializes configs directly from one record.
 
 Current seed modes:
 
 - `auto`: generate deterministic unique seeds from `seed_base`;
 - `file`: load seeds from file, with duplicate protection unless explicitly allowed.
 
-## Querying Results
-
-Use `query.py` to inspect JSONL logs.
-
-Examples:
-
-```bash
-python3 query.py --log-file runs/bench.jsonl --pool sparsepool --dataset PROTEINS --epoch
-```
-
-```bash
-python3 query.py --log-file runs/bench.jsonl --show-repro
-```
-
-```bash
-python3 query.py --log-file runs/bench.jsonl --verify-repro
-```
-
 ## Logged Record Structure
 
 Each experiment record contains the main sections:
 
-- `model`
-- `experiment`
-- `pool`
+- `record_id`
+- `tag` (optional)
+- `spec`
+- `runtime`
+- `result`
+
+`spec` only answers "what was run":
+
 - `dataset`
-- `comment`
-- `meta`
-- `repro`
-- `results`
+- `model`
+- `pool`
+- `train`
 
-The `results` block contains:
+`runtime` only answers "where was it run":
 
-- aggregate statistics;
-- arrays of losses / accuracies / stop epochs;
-- per-run detailed records.
+- timestamp
+- python / torch / pyg versions
+- device metadata
+
+`result` only answers "what came out":
+
+- `mean`
+- `std`
+- `runs`
+
+Each `result.runs[]` item keeps only:
+
+- `seed`
+- `best_epoch`
+- `best_val_loss`
+- `best_test_acc`
 
 ## Current Scope
 
