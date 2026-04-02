@@ -1,6 +1,6 @@
-# GPLab
+# Graph Pooling Lab (GPLab)
 
-GPLab is a lightweight benchmark project for graph pooling methods on graph classification tasks.
+Graph Pooling Lab (GPLab) is a lightweight benchmark project for graph pooling methods on graph classification tasks.
 
 Its purpose is simple: keep the training protocol, backbone, dataset handling, and logging format consistent so different pooling methods can be compared under the same setup.
 

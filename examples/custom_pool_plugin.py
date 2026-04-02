@@ -1,4 +1,4 @@
-"""Example custom pooling plugin for GPLab.
+"""Example custom pooling plugin for Graph Pooling Lab (GPLab).
 
 This example demonstrates the PoolOutput contract for custom pooling plugins.
 All custom pooling methods must return a PoolOutput instance from forward().
@@ -64,7 +64,7 @@ def build_pool(
     Returns:
         CustomTopKPool instance that returns PoolOutput
     """
-    # `avg_node_num` and `nonlinearity` are accepted for compatibility with GPLab's plugin API.
+    # `avg_node_num` and `nonlinearity` are accepted for compatibility with Graph Pooling Lab's plugin API.
     return CustomTopKPool(in_channels, ratio=ratio)
 
 

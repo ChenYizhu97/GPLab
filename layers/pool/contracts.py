@@ -1,5 +1,5 @@
 """
-Pooling output contract for GPLab.
+Pooling output contract for Graph Pooling Lab (GPLab).
 
 This module defines the unified output format for all pooling methods,
 replacing the fragile tuple-length-based dispatch.
