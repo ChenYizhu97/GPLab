@@ -213,11 +213,16 @@ def main(
                     "returncode": completed.returncode,
                     "stdout": completed.stdout,
                     "stderr": completed.stderr,
+                    "appended_to_log": replay_log_file is not None,
                 }
                 try:
                     replay_payload["rerun"]["payload"] = json.loads(completed.stdout) if completed.stdout.strip() else None
                 except json.JSONDecodeError:
                     replay_payload["rerun"]["payload"] = None
+                rerun_payload = replay_payload["rerun"]["payload"]
+                if isinstance(rerun_payload, dict):
+                    replay_payload["rerun"]["record_id"] = rerun_payload.get("summary", {}).get("record_id")
+                    replay_payload["rerun"]["summary"] = rerun_payload.get("summary")
                 replay_payload["ok"] = completed.returncode == 0
                 if completed.returncode != 0:
                     replay_payload["kind"] = "replay_error"

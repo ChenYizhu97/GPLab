@@ -10,8 +10,6 @@ from utils.cli import (
     validate_pool,
     validate_pool_ratio,
 )
-
-
 def _validate_config_sections(model_conf: dict, experiment_conf: dict) -> None:
     if "model" not in model_conf:
         raise ValueError("Missing [model] section in model config")
@@ -172,3 +170,44 @@ def build_request_from_sources(
         allow_duplicate_seeds=final_allow_dup,
     )
     return conf, final_log_file, final_seed_mode, final_seed_base, final_allow_dup, final_seed_list
+
+
+def build_request_from_normalized_job(job: dict) -> tuple[dict, Optional[str], str, int, bool, Optional[list[int]]]:
+    normalized = deepcopy(job)
+    model_conf = {"model": deepcopy(normalized["model"])}
+    experiment_conf = {
+        "experiment": {
+            "runs": normalized["train"]["runs"],
+            "lr": normalized["train"]["lr"],
+            "batch_size": normalized["train"]["batch_size"],
+            "patience": normalized["train"]["patience"],
+            "epochs": normalized["train"]["epochs"],
+            "train_ratio": normalized["train"]["train_ratio"],
+            "val_ratio": normalized["train"]["val_ratio"],
+            "seed_mode": normalized["train"]["seed_mode"],
+            "seed_base": normalized["train"]["seed_base"],
+            "seed_list": deepcopy(normalized["train"]["seed_list"]),
+            "allow_duplicate_seeds": normalized["train"]["allow_duplicate_seeds"],
+        }
+    }
+    conf = build_experiment_config(
+        model_conf=model_conf,
+        experiment_conf=experiment_conf,
+        pool=normalized["pool"]["name"],
+        pool_ratio=normalized["pool"]["ratio"],
+        dataset_name=normalized["dataset"],
+        model_type=normalized["model"]["variant"],
+        tag=normalized["tag"],
+        seed_mode=normalized["train"]["seed_mode"],
+        seed_base=normalized["train"]["seed_base"],
+        seed_list=deepcopy(normalized["train"]["seed_list"]),
+        allow_duplicate_seeds=normalized["train"]["allow_duplicate_seeds"],
+    )
+    return (
+        conf,
+        normalized["log_file"],
+        normalized["train"]["seed_mode"],
+        normalized["train"]["seed_base"],
+        normalized["train"]["allow_duplicate_seeds"],
+        deepcopy(normalized["train"]["seed_list"]),
+    )

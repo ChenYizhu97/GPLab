@@ -2,7 +2,7 @@
 
 Graph Pooling Lab (GPLab) is a lightweight benchmark for graph pooling methods on graph classification tasks.
 
-If you are not a human and want the machine-facing interface, read [`AUTOMATION_INTERFACE.md`](AUTOMATION_INTERFACE.md).
+If you are not a human and want the machine-facing interface, read [`AGENT_REFERENCE.md`](AGENT_REFERENCE.md).
 
 The project is intentionally narrow: keep the training loop, backbone, pooling interface, and experiment record format aligned so different pooling methods can be compared under one protocol.
 
@@ -48,6 +48,9 @@ GPLab/
   training.py
   query.py
   replay.py
+  run_job.py
+  normalize_job.py
+  expand_cases.py
   config/
   experiment/
   model/
@@ -59,6 +62,9 @@ GPLab/
 Key modules:
 
 - `main.py`: CLI entrypoint that merges TOML config with command-line overrides
+- `run_job.py`: strict automation-oriented execution of one normalized job file
+- `normalize_job.py`: emit a canonical complete job object without executing it
+- `expand_cases.py`: emit a case manifest without executing anything
 - `experiment/config.py`: request normalization and validation
 - `experiment/runner.py`: dataset loading, seed resolution, model construction, and multi-run execution
 - `experiment/record.py`: `spec`, `runtime`, `result`, and `record_id` assembly

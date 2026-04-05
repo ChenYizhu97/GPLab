@@ -1,0 +1,73 @@
+import typer
+from typing_extensions import Annotated, Optional
+
+from utils.cli import parse_csv_list
+from utils.jobs import build_case_manifest
+from utils.presentation import build_error_payload, emit_json, validate_output_format
+
+app = typer.Typer(pretty_exceptions_enable=False)
+
+
+@app.command()
+def main(
+    pools: Annotated[str, typer.Option(help="Comma-separated pool list.")] = "sagpool,diffpool",
+    datasets: Annotated[str, typer.Option(help="Comma-separated dataset list.")] = "MUTAG,PROTEINS",
+    model_types: Annotated[str, typer.Option(help="Comma-separated model variants.")] = "sum",
+    pool_ratio: Annotated[float, typer.Option(help="Pooling ratio for every case.")] = 0.5,
+    runs: Annotated[Optional[int], typer.Option(help="Optional run count override.")] = None,
+    epochs: Annotated[Optional[int], typer.Option(help="Optional epoch override.")] = None,
+    patience: Annotated[Optional[int], typer.Option(help="Optional patience override.")] = None,
+    lr: Annotated[Optional[float], typer.Option(help="Optional learning-rate override.")] = None,
+    batch_size: Annotated[Optional[int], typer.Option(help="Optional batch-size override.")] = None,
+    train_ratio: Annotated[Optional[float], typer.Option(help="Optional train split override.")] = None,
+    val_ratio: Annotated[Optional[float], typer.Option(help="Optional validation split override.")] = None,
+    log_file: Annotated[Optional[str], typer.Option(help="Optional log file for generated jobs.")] = None,
+    tag_prefix: Annotated[Optional[str], typer.Option(help="Optional tag prefix for generated cases.")] = None,
+    output_format: Annotated[str, typer.Option(help="Output format: text or json.")] = "json",
+):
+    output_format = validate_output_format(output_format)
+    try:
+        train_overrides = {}
+        for key, value in (
+            ("runs", runs),
+            ("epochs", epochs),
+            ("patience", patience),
+            ("lr", lr),
+            ("batch_size", batch_size),
+            ("train_ratio", train_ratio),
+            ("val_ratio", val_ratio),
+        ):
+            if value is not None:
+                train_overrides[key] = value
+        cases = build_case_manifest(
+            pools=parse_csv_list(pools),
+            datasets=parse_csv_list(datasets),
+            model_types=parse_csv_list(model_types),
+            pool_ratio=pool_ratio,
+            tag_prefix=tag_prefix,
+            train_overrides=train_overrides or None,
+            log_file=log_file,
+        )
+        payload = {
+            "ok": True,
+            "kind": "case_manifest",
+            "cases": cases,
+            "summary": {
+                "total": len(cases),
+            },
+        }
+        if output_format == "json":
+            emit_json(payload)
+            return
+        print(payload)
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        if output_format == "json":
+            emit_json(build_error_payload("expand_cases_error", exc))
+            raise typer.Exit(code=1)
+        raise
+
+
+if __name__ == "__main__":
+    app()

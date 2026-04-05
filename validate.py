@@ -9,62 +9,22 @@ import toml
 import typer
 from typing_extensions import Annotated, Optional
 
+from utils.cli import parse_csv_list, parse_seed_list
+from utils.jobs import build_execution_plan_from_configs
 from utils.presentation import build_error_payload, emit_json, validate_output_format
 
 app = typer.Typer(pretty_exceptions_enable=False)
 
 
-def _parse_csv(value: str) -> list[str]:
-    items = [item.strip() for item in value.split(",")]
-    return [item for item in items if item]
-
-
-def _build_case_command(
-    *,
-    pool: str,
-    dataset: str,
-    model_type: str,
-    pool_ratio: float,
-    log_file: Optional[str],
-    model_config: str,
-    experiment_config: str,
-    seed_mode: Optional[str],
-    seed_base: Optional[int],
-    seed_list: Optional[str],
-    allow_duplicate_seeds: Optional[bool],
-    tag: str,
-) -> list[str]:
-    command = [
+def _build_case_command(*, job_file: str) -> list[str]:
+    return [
         sys.executable,
-        "main.py",
-        "--pool",
-        pool,
-        "--pool-ratio",
-        str(pool_ratio),
-        "--dataset",
-        dataset,
-        "--model-type",
-        model_type,
-        "--model-config",
-        model_config,
-        "--experiment-config",
-        experiment_config,
-        "--tag",
-        tag,
+        "run_job.py",
+        "--job-file",
+        job_file,
         "--output-format",
         "json",
     ]
-    if log_file is not None:
-        command.extend(["--log-file", log_file])
-    if seed_mode is not None:
-        command.extend(["--seed-mode", seed_mode])
-    if seed_base is not None:
-        command.extend(["--seed-base", str(seed_base)])
-    if seed_list is not None:
-        command.extend(["--seed-list", seed_list])
-    if allow_duplicate_seeds:
-        command.append("--allow-duplicate-seeds")
-    return command
 
 
 @app.command()
@@ -92,7 +52,7 @@ def main(
 ):
     output_format = validate_output_format(output_format)
     try:
-        toml.load(model_config)
+        model_conf = toml.load(model_config)
         experiment_conf = toml.load(experiment_config)
         experiment_conf.setdefault("experiment", {})
         experiment_conf["experiment"].update(
@@ -106,78 +66,101 @@ def main(
                 "val_ratio": val_ratio,
             }
         )
+        parsed_seed_list = parse_seed_list(seed_list)
+        planned_cases = build_execution_plan_from_configs(
+            model_conf=model_conf,
+            experiment_conf=experiment_conf,
+            pools=parse_csv_list(pools),
+            datasets=parse_csv_list(datasets),
+            model_types=[model_type],
+            pool_ratio=pool_ratio,
+            tag_prefix=tag_prefix,
+            log_file=log_file,
+            seed_mode=seed_mode,
+            seed_base=seed_base,
+            seed_list=parsed_seed_list,
+            allow_duplicate_seeds=allow_duplicate_seeds,
+        )
         cases = []
         with TemporaryDirectory(prefix="gplab_validate_") as temp_dir:
-            smoke_config_path = Path(temp_dir) / "experiment.toml"
-            smoke_config_path.write_text(toml.dumps(experiment_conf), encoding="utf-8")
+            for planned_case in planned_cases:
+                pool = planned_case["pool"]
+                dataset = planned_case["dataset"]
+                case_id = planned_case["case_id"]
+                command = []
+                start = time.perf_counter()
+                job_file = Path(temp_dir) / f"{case_id}.json"
+                job_file.write_text(json.dumps(planned_case["job"], ensure_ascii=False), encoding="utf-8")
+                try:
+                    command = _build_case_command(job_file=str(job_file))
+                    completed = subprocess.run(
+                        command,
+                        check=False,
+                        cwd=Path(__file__).resolve().parent,
+                        capture_output=True,
+                        text=True,
+                    )
 
-            for pool in _parse_csv(pools):
-                for dataset in _parse_csv(datasets):
-                    start = time.perf_counter()
-                    tag = f"{tag_prefix}_{pool}_{dataset}"
-                    try:
-                        command = _build_case_command(
-                            pool=pool,
-                            dataset=dataset,
-                            model_type=model_type,
-                            pool_ratio=pool_ratio,
-                            log_file=log_file,
-                            model_config=model_config,
-                            experiment_config=str(smoke_config_path),
-                            seed_mode=seed_mode,
-                            seed_base=seed_base,
-                            seed_list=seed_list,
-                            allow_duplicate_seeds=allow_duplicate_seeds,
-                            tag=tag,
-                        )
-                        completed = subprocess.run(
-                            command,
-                            check=False,
-                            cwd=Path(__file__).resolve().parent,
-                            capture_output=True,
-                            text=True,
-                        )
+                    payload = None
+                    stdout_text = completed.stdout.strip()
+                    if stdout_text:
+                        try:
+                            payload = json.loads(stdout_text)
+                        except json.JSONDecodeError:
+                            payload = None
 
-                        payload = None
-                        stdout_text = completed.stdout.strip()
-                        if stdout_text:
-                            try:
-                                payload = json.loads(stdout_text)
-                            except json.JSONDecodeError:
-                                payload = None
-
-                        if payload is not None and payload.get("ok"):
-                            summary = payload["summary"]
-                            case = {
-                                "pool": pool,
-                                "dataset": dataset,
-                                "status": "ok",
-                                "seconds": round(time.perf_counter() - start, 4),
-                                "record_id": summary["record_id"],
-                            }
-                        else:
-                            error = (payload or {}).get("error", {})
-                            case = {
-                                "pool": pool,
-                                "dataset": dataset,
-                                "status": "failed",
-                                "seconds": round(time.perf_counter() - start, 4),
-                                "error_type": error.get("type", "runtime_error"),
-                                "message": error.get(
-                                    "message",
-                                    completed.stderr.strip() or stdout_text or "subprocess failed",
-                                ),
-                            }
-                    except Exception as exc:
+                    if payload is not None and payload.get("ok"):
+                        summary = payload["summary"]
                         case = {
+                            "case_id": case_id,
                             "pool": pool,
                             "dataset": dataset,
+                            "model_type": model_type,
+                            "status": "ok",
+                            "seconds": round(time.perf_counter() - start, 4),
+                            "record_id": summary["record_id"],
+                            "command": command,
+                            "subprocess": {
+                                "returncode": completed.returncode,
+                                "job_file": str(job_file),
+                            },
+                        }
+                    else:
+                        error = (payload or {}).get("error", {})
+                        case = {
+                            "case_id": case_id,
+                            "pool": pool,
+                            "dataset": dataset,
+                            "model_type": model_type,
                             "status": "failed",
                             "seconds": round(time.perf_counter() - start, 4),
-                            "error_type": type(exc).__name__,
-                            "message": str(exc),
+                            "error_type": error.get("type", "runtime_error"),
+                            "message": error.get(
+                                "message",
+                                completed.stderr.strip() or stdout_text or "subprocess failed",
+                            ),
+                            "command": command,
+                            "subprocess": {
+                                "returncode": completed.returncode,
+                                "job_file": str(job_file),
+                            },
                         }
-                    cases.append(case)
+                except Exception as exc:
+                    case = {
+                        "case_id": case_id,
+                        "pool": pool,
+                        "dataset": dataset,
+                        "model_type": model_type,
+                        "status": "failed",
+                        "seconds": round(time.perf_counter() - start, 4),
+                        "error_type": type(exc).__name__,
+                        "message": str(exc),
+                        "command": command,
+                        "subprocess": {
+                            "job_file": str(job_file),
+                        },
+                    }
+                cases.append(case)
 
         summary = {
             "total": len(cases),
@@ -188,6 +171,7 @@ def main(
             "ok": summary["failed"] == 0,
             "kind": "validation_result",
             "mode": "smoke",
+            "plan": planned_cases,
             "cases": cases,
             "summary": summary,
         }
