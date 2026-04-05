@@ -3,7 +3,7 @@ from typing import Optional
 
 import numpy as np
 
-from experiment.identity import ensure_record_id
+from experiment.identity import compute_benchmark_key, ensure_record_id
 from utils.jsonl import append_jsonl
 
 
@@ -70,3 +70,35 @@ def build_record(conf: dict, *, runtime: dict, run_records: list[dict]) -> dict:
 def append_record_if_needed(log_file: Optional[str], record: dict) -> None:
     if log_file is not None:
         append_jsonl(log_file, record)
+
+
+def summarize_record(record: dict) -> dict:
+    ensured = ensure_record_id(record)
+    runs = ensured["result"]["runs"]
+    test_acc = [float(run["best_test_acc"]) for run in runs]
+    val_loss = [float(run["best_val_loss"]) for run in runs]
+    epochs = [int(run["best_epoch"]) for run in runs]
+
+    corr = None
+    if len(runs) >= 2 and np.std(val_loss) != 0 and np.std(test_acc) != 0:
+        corr = float(np.corrcoef(val_loss, test_acc)[0, 1])
+
+    summary = {
+        "record_id": ensured["record_id"],
+        "benchmark_key": compute_benchmark_key(ensured),
+        "dataset": ensured["spec"]["dataset"],
+        "pool": ensured["spec"]["pool"]["name"],
+        "pool_ratio": ensured["spec"]["pool"]["ratio"],
+        "model_type": ensured["spec"]["model"].get("variant", "sum"),
+        "runs": len(runs),
+        "mean": float(ensured["result"]["mean"]),
+        "std": float(ensured["result"]["std"]),
+        "avg_best_epoch": float(np.mean(epochs)),
+        "avg_val_loss": float(np.mean(val_loss)),
+        "best_test_acc": float(max(test_acc)),
+        "worst_test_acc": float(min(test_acc)),
+        "val_loss_test_acc_corr": corr,
+    }
+    if "tag" in ensured:
+        summary["tag"] = ensured["tag"]
+    return summary

@@ -1,50 +1,19 @@
-import hashlib
-import json
 import shlex
 
-import numpy as np
 import typer
 from typing_extensions import Annotated, Optional
 
-from experiment.identity import ensure_record_id
+from experiment.identity import compute_benchmark_key, ensure_record_id
+from experiment.record import summarize_record
 from utils.cli import validate_dataset, validate_model_type, validate_pool
 from utils.jsonl import read_jsonl
+from utils.presentation import build_error_payload, emit_json, validate_output_format
 
 app = typer.Typer(pretty_exceptions_enable=False)
 
 
 def _load_jsonl(path: str) -> list[dict]:
     return [ensure_record_id(record) for record in read_jsonl(path)]
-
-
-def _record_summary(record: dict) -> dict:
-    runs = record["result"]["runs"]
-    test_acc = [float(run["best_test_acc"]) for run in runs]
-    val_loss = [float(run["best_val_loss"]) for run in runs]
-    epochs = [int(run["best_epoch"]) for run in runs]
-
-    corr = None
-    if len(runs) >= 2 and np.std(val_loss) != 0 and np.std(test_acc) != 0:
-        corr = float(np.corrcoef(val_loss, test_acc)[0, 1])
-
-    summary = {
-        "record_id": record["record_id"],
-        "dataset": record["spec"]["dataset"],
-        "pool": record["spec"]["pool"]["name"],
-        "pool_ratio": record["spec"]["pool"]["ratio"],
-        "model_type": record["spec"]["model"].get("variant", "sum"),
-        "runs": len(runs),
-        "mean": float(record["result"]["mean"]),
-        "std": float(record["result"]["std"]),
-        "avg_best_epoch": float(np.mean(epochs)),
-        "avg_val_loss": float(np.mean(val_loss)),
-        "best_test_acc": float(max(test_acc)),
-        "worst_test_acc": float(min(test_acc)),
-        "val_loss_test_acc_corr": corr,
-    }
-    if "tag" in record:
-        summary["tag"] = record["tag"]
-    return summary
 
 
 def _matches(record: dict, *, dataset: Optional[str], pool: Optional[str], tag: Optional[str], model_type: Optional[str]) -> bool:
@@ -60,17 +29,6 @@ def _matches(record: dict, *, dataset: Optional[str], pool: Optional[str], tag: 
     return True
 
 
-def _benchmark_key(record: dict) -> str:
-    spec = record["spec"]
-    payload = {
-        "dataset": spec["dataset"],
-        "model": spec["model"],
-        "train": spec["train"],
-    }
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha1(encoded).hexdigest()[:12]
-
-
 def _group_header(records: list[dict]) -> str:
     first = records[0]
     spec = first["spec"]
@@ -78,7 +36,7 @@ def _group_header(records: list[dict]) -> str:
     parts = [
         f"dataset={spec['dataset']}",
         f"model={spec['model'].get('variant', 'sum')}",
-        f"benchmark={_benchmark_key(first)}",
+        f"benchmark={compute_benchmark_key(first)}",
     ]
     if len(tags) == 1:
         parts.append(f"tag={tags[0]}")
@@ -88,14 +46,14 @@ def _group_header(records: list[dict]) -> str:
 
 
 def _sort_value(record: dict, sort_by: str) -> float:
-    summary = _record_summary(record)
+    summary = summarize_record(record)
     return float(summary[sort_by])
 
 
 def _print_report(records: list[dict], sort_by: str) -> None:
     groups: dict[str, list[dict]] = {}
     for record in records:
-        groups.setdefault(_benchmark_key(record), []).append(record)
+        groups.setdefault(compute_benchmark_key(record), []).append(record)
 
     for group in groups.values():
         ranked = sorted(
@@ -105,7 +63,7 @@ def _print_report(records: list[dict], sort_by: str) -> None:
         )
         print(_group_header(ranked))
         for index, record in enumerate(ranked, start=1):
-            summary = _record_summary(record)
+            summary = summarize_record(record)
             corr = summary["val_loss_test_acc_corr"]
             corr_text = "n/a" if corr is None else f"{corr:.4f}"
             print(
@@ -121,6 +79,41 @@ def _print_report(records: list[dict], sort_by: str) -> None:
         print()
 
 
+def _build_report_payload(records: list[dict], sort_by: str) -> dict:
+    groups: dict[str, list[dict]] = {}
+    for record in records:
+        groups.setdefault(compute_benchmark_key(record), []).append(record)
+
+    payload_groups = []
+    for benchmark_key, group in groups.items():
+        ranked = sorted(
+            group,
+            key=lambda record: _sort_value(record, sort_by),
+            reverse=sort_by not in {"std", "avg_val_loss", "avg_best_epoch"},
+        )
+        group_summaries = []
+        for index, record in enumerate(ranked, start=1):
+            summary = summarize_record(record)
+            summary["rank"] = index
+            group_summaries.append(summary)
+
+        first = ranked[0]
+        payload_groups.append(
+            {
+                "benchmark_key": benchmark_key,
+                "dataset": first["spec"]["dataset"],
+                "model_type": first["spec"]["model"].get("variant", "sum"),
+                "records": group_summaries,
+            }
+        )
+
+    return {
+        "ok": True,
+        "kind": "query_report",
+        "groups": payload_groups,
+    }
+
+
 @app.command()
 def main(
     log_file: Annotated[str, typer.Option(..., help="JSONL log file to query.")],
@@ -132,39 +125,60 @@ def main(
     sort_by: Annotated[str, typer.Option(help="Report sort field: mean, std, avg_best_epoch, avg_val_loss.")] = "mean",
     show_spec: Annotated[bool, typer.Option(help="Include the full spec block in default output.")] = False,
     show_replay: Annotated[bool, typer.Option(help="Show replay.py command for each matched record.")] = False,
+    output_format: Annotated[str, typer.Option(help="Output format: text or json.")] = "text",
 ):
-    if sort_by not in {"mean", "std", "avg_best_epoch", "avg_val_loss"}:
-        raise typer.BadParameter(
-            "sort_by must be one of: mean, std, avg_best_epoch, avg_val_loss.",
-            param_hint="--sort-by",
-        )
-
-    if dataset is not None:
-        validate_dataset(dataset)
-    if pool is not None:
-        validate_pool(pool)
-    if model_type is not None:
-        validate_model_type(model_type)
-
-    records = [
-        record
-        for record in _load_jsonl(log_file)
-        if _matches(record, dataset=dataset, pool=pool, tag=tag, model_type=model_type)
-    ]
-
-    if report:
-        _print_report(records, sort_by)
-        return
-
-    for record in records:
-        summary = _record_summary(record)
-        if show_spec:
-            summary["spec"] = record["spec"]
-        if show_replay:
-            summary["replay_command"] = (
-                f"python3 replay.py --log-file {shlex.quote(log_file)} --record-id {record['record_id']}"
+    output_format = validate_output_format(output_format)
+    try:
+        if sort_by not in {"mean", "std", "avg_best_epoch", "avg_val_loss"}:
+            raise typer.BadParameter(
+                "sort_by must be one of: mean, std, avg_best_epoch, avg_val_loss.",
+                param_hint="--sort-by",
             )
-        print(summary)
+
+        if dataset is not None:
+            validate_dataset(dataset)
+        if pool is not None:
+            validate_pool(pool)
+        if model_type is not None:
+            validate_model_type(model_type)
+
+        records = [
+            record
+            for record in _load_jsonl(log_file)
+            if _matches(record, dataset=dataset, pool=pool, tag=tag, model_type=model_type)
+        ]
+
+        if report:
+            if output_format == "json":
+                emit_json(_build_report_payload(records, sort_by))
+                return
+            _print_report(records, sort_by)
+            return
+
+        summaries = []
+        for record in records:
+            summary = summarize_record(record)
+            if show_spec:
+                summary["spec"] = record["spec"]
+            if show_replay:
+                summary["replay_command"] = (
+                    f"python3 replay.py --log-file {shlex.quote(log_file)} --record-id {record['record_id']}"
+                )
+            summaries.append(summary)
+
+        if output_format == "json":
+            emit_json({"ok": True, "kind": "query_result", "records": summaries})
+            return
+
+        for summary in summaries:
+            print(summary)
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        if output_format == "json":
+            emit_json(build_error_payload("query_error", exc, details={"log_file": log_file}))
+            raise typer.Exit(code=1)
+        raise
 
 
 if __name__ == "__main__":

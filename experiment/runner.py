@@ -80,7 +80,7 @@ def _run_single_experiment(model, dataset, run_idx: int, run_seed: int, run_spli
     best_test_acc = 0.0
     best_epoch = 1
 
-    loop = tqdm(range(1, expr_conf["epochs"] + 1))
+    loop = tqdm(range(1, expr_conf["epochs"] + 1), disable=bool(expr_conf.get("_silent")))
     for epoch in loop:
         train(model, train_loader, optimizer, loss_fn, metrics, device)
         _, val_loss = test(model, val_loader, loss_fn, metrics, device)
@@ -111,43 +111,49 @@ def _run_single_experiment(model, dataset, run_idx: int, run_seed: int, run_spli
     }
 
 
-def run_experiment(conf: dict) -> dict:
+def run_experiment(conf: dict, *, emit_text: bool = True) -> dict:
     configure_runtime_threads()
     set_np_and_torch(0)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     runtime = build_runtime_meta(device)
-    print_expr_info(conf, device)
-
-    dataset = load_dataset(conf["dataset"])
-    if dataset is None:
-        raise ValueError(f"Failed to load dataset '{conf['dataset']}'.")
-    if len(dataset) == 0:
-        raise ValueError("Loaded dataset is empty.")
-
-    avg_node_num = dataset._data.num_nodes // len(dataset)
-    model = _build_model(conf, dataset, avg_node_num, device)
-    rprint(summary(model, data=dataset[0].to(device), leaf_module=None, max_depth=5))
-
-    split_indices_all = _prepare_split_metadata(conf, len(dataset))
-    metrics = _build_metrics(device, dataset.num_classes)
-
-    run_records = []
     expr_conf = conf["experiment"]
+    expr_conf["_silent"] = not emit_text
+    try:
+        if emit_text:
+            print_expr_info(conf, device)
 
-    for run_idx in range(1, expr_conf["runs"] + 1):
-        run_record = _run_single_experiment(
-            model,
-            dataset,
-            run_idx=run_idx,
-            run_seed=expr_conf["seeds"][run_idx - 1],
-            run_split=split_indices_all[run_idx - 1],
-            expr_conf=expr_conf,
-            metrics=metrics,
-            device=device,
-        )
-        if run_idx != expr_conf["runs"]:
-            rprint(sep_c("-"))
+        dataset = load_dataset(conf["dataset"])
+        if dataset is None:
+            raise ValueError(f"Failed to load dataset '{conf['dataset']}'.")
+        if len(dataset) == 0:
+            raise ValueError("Loaded dataset is empty.")
 
-        run_records.append(run_record)
+        avg_node_num = dataset._data.num_nodes // len(dataset)
+        model = _build_model(conf, dataset, avg_node_num, device)
+        if emit_text:
+            rprint(summary(model, data=dataset[0].to(device), leaf_module=None, max_depth=5))
 
-    return build_record(conf, runtime=runtime, run_records=run_records)
+        split_indices_all = _prepare_split_metadata(conf, len(dataset))
+        metrics = _build_metrics(device, dataset.num_classes)
+
+        run_records = []
+
+        for run_idx in range(1, expr_conf["runs"] + 1):
+            run_record = _run_single_experiment(
+                model,
+                dataset,
+                run_idx=run_idx,
+                run_seed=expr_conf["seeds"][run_idx - 1],
+                run_split=split_indices_all[run_idx - 1],
+                expr_conf=expr_conf,
+                metrics=metrics,
+                device=device,
+            )
+            if emit_text and run_idx != expr_conf["runs"]:
+                rprint(sep_c("-"))
+
+            run_records.append(run_record)
+
+        return build_record(conf, runtime=runtime, run_records=run_records)
+    finally:
+        expr_conf.pop("_silent", None)

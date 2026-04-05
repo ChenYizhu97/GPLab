@@ -2,6 +2,8 @@
 
 Graph Pooling Lab (GPLab) is a lightweight benchmark for graph pooling methods on graph classification tasks.
 
+If you are not a human and want the machine-facing interface, read [`AUTOMATION_INTERFACE.md`](AUTOMATION_INTERFACE.md).
+
 The project is intentionally narrow: keep the training loop, backbone, pooling interface, and experiment record format aligned so different pooling methods can be compared under one protocol.
 
 ```mermaid
@@ -24,7 +26,7 @@ flowchart LR
 - One CLI for built-in poolers and custom pooling plugins
 - Support for both sparse poolers and dense assignment-based poolers
 - Structured JSONL experiment records with stable `record_id`
-- Built-in query and replay tools for result inspection and reruns
+- Built-in query, replay, and validation tools for inspection and reruns
 - Lightweight scripts for batch runs and smoke testing
 
 ## What GPLab Benchmarks
@@ -63,6 +65,7 @@ Key modules:
 - `model/`: shared graph classifier backbone with `sum` and `plain` variants
 - `layers/resolver.py`: convolution resolver, pooling resolver, and custom plugin loading
 - `layers/pool/PoolAdapter.py`: dense-to-sparse bridge for dense pooling methods
+- `validate.py`: smoke validation entrypoint
 - `utils/`: dataset loading, reproducibility helpers, runtime metadata, and JSONL I/O
 
 ## Installation
@@ -368,6 +371,12 @@ To restrict the sweep:
 
 ```bash
 POOLS="sagpool diffpool" DATASETS="MUTAG PROTEINS" bash utils/smoke_test.sh
+```
+
+Run the smoke validator:
+
+```bash
+python3 validate.py --pools sagpool,diffpool --datasets MUTAG,PROTEINS
 ```
 
 ## Reproducibility Notes

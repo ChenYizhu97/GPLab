@@ -1,7 +1,10 @@
 from copy import deepcopy
 from typing import Optional
 
+import typer
+
 from utils.cli import (
+    resolve_seed_options,
     validate_dataset,
     validate_model_type,
     validate_pool,
@@ -31,6 +34,29 @@ def _normalize_runs(expr_conf: dict) -> int:
     if runs <= 0:
         raise ValueError("Invalid runs value. Require experiment.runs > 0.")
     return runs
+
+
+def apply_job_overrides(model_conf: dict, experiment_conf: dict, job: dict) -> tuple[dict, dict]:
+    merged_model = deepcopy(model_conf)
+    merged_experiment = deepcopy(experiment_conf)
+
+    model_section = merged_model.setdefault("model", {})
+    experiment_section = merged_experiment.setdefault("experiment", {})
+
+    if "model" in job:
+        model_section.update(job["model"])
+
+    if "train" in job:
+        train = job["train"]
+        for field in ("runs", "lr", "batch_size", "patience", "epochs", "train_ratio", "val_ratio"):
+            if field in train:
+                experiment_section[field] = train[field]
+
+        for field in ("seed_mode", "seed_base", "seed_list", "allow_duplicate_seeds"):
+            if field in train:
+                experiment_section[field] = train[field]
+
+    return merged_model, merged_experiment
 
 
 def build_experiment_config(
@@ -80,3 +106,69 @@ def build_experiment_config(
         conf["tag"] = tag
 
     return conf
+
+
+def build_request_from_sources(
+    *,
+    model_conf: dict,
+    experiment_conf: dict,
+    job: Optional[dict],
+    pool: Optional[str],
+    pool_ratio: Optional[float],
+    dataset_name: Optional[str],
+    model_type: Optional[str],
+    tag: Optional[str],
+    log_file: Optional[str],
+    seed_mode: Optional[str],
+    seed_base: Optional[int],
+    seed_list: Optional[str],
+    allow_duplicate_seeds: Optional[bool],
+) -> tuple[dict, Optional[str], str, Optional[int], bool, Optional[list[int]]]:
+    merged_model_conf = deepcopy(model_conf)
+    merged_experiment_conf = deepcopy(experiment_conf)
+
+    if job is not None:
+        merged_model_conf, merged_experiment_conf = apply_job_overrides(
+            merged_model_conf,
+            merged_experiment_conf,
+            job,
+        )
+
+    job_pool = (job or {}).get("pool", {})
+    job_model = (job or {}).get("model", {})
+
+    final_pool = pool if pool is not None else job_pool.get("name", "nopool")
+    final_pool_ratio = pool_ratio if pool_ratio is not None else job_pool.get("ratio", 0.5)
+    final_dataset = dataset_name if dataset_name is not None else (job or {}).get("dataset", "PROTEINS")
+    final_model_type = model_type if model_type is not None else job_model.get("variant", "sum")
+    final_tag = tag if tag is not None else (job or {}).get("tag")
+    final_log_file = log_file if log_file is not None else (job or {}).get("log_file")
+
+    exp = merged_experiment_conf.get("experiment", {})
+    try:
+        final_seed_mode, final_seed_base, final_allow_dup, final_seed_list = resolve_seed_options(
+            seed_mode=seed_mode,
+            seed_base=seed_base,
+            seed_list=seed_list,
+            allow_duplicate_seeds=allow_duplicate_seeds,
+            expr_conf=exp,
+        )
+    except typer.BadParameter:
+        raise
+    except Exception as exc:  # pragma: no cover - defensive bridge
+        raise ValueError(str(exc)) from exc
+
+    conf = build_experiment_config(
+        model_conf=merged_model_conf,
+        experiment_conf=merged_experiment_conf,
+        pool=final_pool,
+        pool_ratio=float(final_pool_ratio),
+        dataset_name=final_dataset,
+        model_type=final_model_type,
+        tag=final_tag,
+        seed_mode=final_seed_mode,
+        seed_base=final_seed_base,
+        seed_list=final_seed_list,
+        allow_duplicate_seeds=final_allow_dup,
+    )
+    return conf, final_log_file, final_seed_mode, final_seed_base, final_allow_dup, final_seed_list

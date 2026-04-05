@@ -1,20 +1,22 @@
 import toml
 import typer
-from experiment.config import build_experiment_config
+from experiment.config import build_request_from_sources
 from experiment.record import append_record_if_needed
 from experiment.runner import run_experiment
-from utils.cli import resolve_seed_options
+from experiment.record import summarize_record
 from typing_extensions import Annotated, Optional
+from utils.jobs import load_job_file
+from utils.presentation import build_error_payload, emit_json, validate_output_format
 
 app = typer.Typer(pretty_exceptions_enable=False)
 
 
 @app.command()
 def main(
-        pool: Annotated[str, typer.Option(help="Pooling method name or <module:factory> for custom pooling.")] = "nopool",
-        pool_ratio: Annotated[float, typer.Option(help="Pooling ratio for built-in or custom pooling methods.")] = 0.5,
-        dataset: Annotated[str, typer.Option()] = "PROTEINS",
-        model_type: Annotated[str, typer.Option(help="Model type: sum or plain.")] = "sum",
+        pool: Annotated[Optional[str], typer.Option(help="Pooling method name or <module:factory> for custom pooling.")] = None,
+        pool_ratio: Annotated[Optional[float], typer.Option(help="Pooling ratio for built-in or custom pooling methods.")] = None,
+        dataset: Annotated[Optional[str], typer.Option()] = None,
+        model_type: Annotated[Optional[str], typer.Option(help="Model type: sum or plain.")] = None,
         log_file: Annotated[Optional[str], typer.Option(help="JSONL file path to append experiment records.")] = None,
         model_config: Annotated[str, typer.Option()] = "config/model.toml",
         experiment_config: Annotated[str, typer.Option()] = "config/experiment.toml",
@@ -23,34 +25,58 @@ def main(
         seed_base: Annotated[Optional[int], typer.Option(help="Base integer for deterministic seed generation in auto mode.")] = None,
         seed_list: Annotated[Optional[str], typer.Option(help="Comma-separated seed list for exact replay, for example: 11,22,33")] = None,
         allow_duplicate_seeds: Annotated[Optional[bool], typer.Option(help="Allow duplicate seeds in file or list mode.")] = None,
+        job_file: Annotated[Optional[str], typer.Option(help="Path to a single experiment job JSON file.")] = None,
+        output_format: Annotated[str, typer.Option(help="Output format: text or json.")] = "text",
 ):
-    model_conf = toml.load(model_config)
-    experiment_conf = toml.load(experiment_config)
+    output_format = validate_output_format(output_format)
+    try:
+        model_conf = toml.load(model_config)
+        experiment_conf = toml.load(experiment_config)
+        job = load_job_file(job_file) if job_file is not None else None
 
-    exp = experiment_conf.get("experiment", {})
-    final_seed_mode, final_seed_base, final_allow_dup, final_seed_list = resolve_seed_options(
-        seed_mode=seed_mode,
-        seed_base=seed_base,
-        seed_list=seed_list,
-        allow_duplicate_seeds=allow_duplicate_seeds,
-        expr_conf=exp,
-    )
+        conf, final_log_file, final_seed_mode, final_seed_base, final_allow_dup, final_seed_list = build_request_from_sources(
+            model_conf=model_conf,
+            experiment_conf=experiment_conf,
+            job=job,
+            pool=pool,
+            pool_ratio=pool_ratio,
+            dataset_name=dataset,
+            model_type=model_type,
+            tag=tag,
+            log_file=log_file,
+            seed_mode=seed_mode,
+            seed_base=seed_base,
+            seed_list=seed_list,
+            allow_duplicate_seeds=allow_duplicate_seeds,
+        )
 
-    conf = build_experiment_config(
-        model_conf=model_conf,
-        experiment_conf=experiment_conf,
-        pool=pool,
-        pool_ratio=pool_ratio,
-        dataset_name=dataset,
-        model_type=model_type,
-        tag=tag,
-        seed_mode=final_seed_mode,
-        seed_base=final_seed_base,
-        seed_list=final_seed_list,
-        allow_duplicate_seeds=final_allow_dup,
-    )
-    record = run_experiment(conf)
-    append_record_if_needed(log_file, record)
+        record = run_experiment(conf, emit_text=output_format == "text")
+        append_record_if_needed(final_log_file, record)
+
+        if output_format == "json":
+            emit_json(
+                {
+                    "ok": True,
+                    "kind": "train_result",
+                    "record": record,
+                    "summary": summarize_record(record),
+                    "request": {
+                        "job_file": job_file,
+                        "log_file": final_log_file,
+                        "seed_mode": final_seed_mode,
+                        "seed_base": final_seed_base,
+                        "allow_duplicate_seeds": final_allow_dup,
+                        "seed_list": final_seed_list,
+                    },
+                }
+            )
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        if output_format == "json":
+            emit_json(build_error_payload("train_error", exc, details={"job_file": job_file, "log_file": log_file}))
+            raise typer.Exit(code=1)
+        raise
 
 
 if __name__ == "__main__":

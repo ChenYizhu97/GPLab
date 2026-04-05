@@ -1,6 +1,7 @@
 import typer
 from typing import Optional
 from utils.registry import TU_DATASETS, BUILTIN_POOLS
+from utils.presentation import validate_output_format
 
 
 def validate_dataset(name: str) -> None:
