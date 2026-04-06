@@ -19,7 +19,7 @@ app = typer.Typer(pretty_exceptions_enable=False)
 def _build_case_command(*, job_file: str) -> list[str]:
     return [
         sys.executable,
-        "run_job.py",
+        "run_train_job.py",
         "--job-file",
         job_file,
         "--output-format",

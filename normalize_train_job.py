@@ -1,7 +1,7 @@
 import typer
 from typing_extensions import Annotated
 
-from utils.jobs import load_job_file, normalize_job_payload, normalized_job_case_id
+from utils.jobs import compute_train_job_case_id, load_job_file, normalize_train_job
 from utils.presentation import build_error_payload, emit_json, validate_output_format
 
 app = typer.Typer(pretty_exceptions_enable=False)
@@ -14,11 +14,11 @@ def main(
 ):
     output_format = validate_output_format(output_format)
     try:
-        normalized_job = normalize_job_payload(load_job_file(job_file))
+        normalized_job = normalize_train_job(load_job_file(job_file))
         payload = {
             "ok": True,
             "kind": "normalized_job",
-            "case_id": normalized_job_case_id(normalized_job),
+            "case_id": compute_train_job_case_id(normalized_job),
             "job": normalized_job,
         }
         if output_format == "json":

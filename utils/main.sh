@@ -45,6 +45,6 @@ fi
 for dataset in "${DATASET_LIST[@]}"; do
   for pool in "${POOL_LIST[@]}"; do
     echo "[run] dataset=$dataset pool=$pool model=$MODEL_TYPE tag=${TAG}_${pool}_${dataset}"
-    sh -c "$PYTHON_CMD main.py --pool \"$pool\" --pool-ratio \"$POOL_RATIO\" --dataset \"$dataset\" --model-type \"$MODEL_TYPE\" --log-file \"$LOG_FILE\" --tag \"${TAG}_${pool}_${dataset}\""
+    sh -c "$PYTHON_CMD train_cli.py --pool \"$pool\" --pool-ratio \"$POOL_RATIO\" --dataset \"$dataset\" --model-type \"$MODEL_TYPE\" --log-file \"$LOG_FILE\" --tag \"${TAG}_${pool}_${dataset}\""
   done
 done

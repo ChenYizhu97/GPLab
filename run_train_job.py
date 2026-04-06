@@ -1,10 +1,10 @@
 import typer
 from typing_extensions import Annotated
 
-from experiment.config import build_request_from_normalized_job
+from experiment.execute import execute_request
 from experiment.record import append_record_if_needed, summarize_record
-from experiment.runner import run_experiment
-from utils.jobs import load_job_file, normalize_complete_job_payload
+from experiment.request_job import build_job_request
+from utils.jobs import load_job_file, normalize_train_job
 from utils.presentation import build_error_payload, emit_json, validate_output_format
 
 app = typer.Typer(pretty_exceptions_enable=False)
@@ -18,11 +18,11 @@ def main(
     output_format = validate_output_format(output_format)
     try:
         loaded_job = load_job_file(job_file)
-        normalized_job = normalize_complete_job_payload(loaded_job)
+        normalized_job = normalize_train_job(loaded_job)
         conf, final_log_file, final_seed_mode, final_seed_base, final_allow_dup, final_seed_list = (
-            build_request_from_normalized_job(normalized_job)
+            build_job_request(normalized_job)
         )
-        record = run_experiment(conf, emit_text=output_format == "text")
+        record = execute_request(conf, emit_text=output_format == "text")
         append_record_if_needed(final_log_file, record)
 
         if output_format == "json":

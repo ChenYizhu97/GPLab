@@ -4,7 +4,7 @@ import torch
 from torch.nn import Linear
 from torch_geometric.nn import GraphConv, GCNConv, DenseGCNConv, GINConv
 from torch_geometric.nn.pool import TopKPooling, ASAPooling
-from .pool import SAGPooling, SparsePooling, PoolAdapter, PoolOutput
+from .pool import DensePoolAdapter, SAGPooling, SparsePooling, PoolOutput
 from utils.registry import BUILTIN_POOLS
 
 
@@ -117,7 +117,7 @@ def pool_resolver(pool:str, in_channels:int, ratio:float=0.5, avg_node_num:Optio
     Returns:
         Pooling layer instance or None for "nopool"
     """
-    # For dense pooling methods, this returns the learnable assignment module wrapped by PoolAdapter.
+    # For dense pooling methods, this returns the learnable assignment module wrapped by DensePoolAdapter.
     if pool in (None, "", "nopool"):
         return None
 
@@ -138,10 +138,10 @@ def pool_resolver(pool:str, in_channels:int, ratio:float=0.5, avg_node_num:Optio
     if pool in ("mincutpool", "diffpool", "densepool"):
         k = _dense_cluster_size(avg_node_num, ratio)
         if pool == "mincutpool":
-            return PoolAdapter(Linear(in_channels, k), pool, nonlinearity=nonlinearity)
+            return DensePoolAdapter(Linear(in_channels, k), pool, nonlinearity=nonlinearity)
         if pool == "diffpool":
-            return PoolAdapter(DenseGCNConv(in_channels, k), pool, nonlinearity=nonlinearity)
-        return PoolAdapter(Linear(in_channels, k), pool, nonlinearity=nonlinearity)
+            return DensePoolAdapter(DenseGCNConv(in_channels, k), pool, nonlinearity=nonlinearity)
+        return DensePoolAdapter(Linear(in_channels, k), pool, nonlinearity=nonlinearity)
 
     if ":" in pool:
         factory = _load_pool_factory(pool)

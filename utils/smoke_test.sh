@@ -88,7 +88,7 @@ fi
 for pool in "${POOL_LIST[@]}"; do
   for dataset in "${DATASET_LIST[@]}"; do
     start="$(date +%s)"
-    cmd="$PYTHON_CMD main.py --pool \"$pool\" --pool-ratio \"$POOL_RATIO\" --dataset \"$dataset\" --experiment-config \"$CONFIG_PATH\" --tag \"${TAG_PREFIX}_${pool}_${dataset}\""
+    cmd="$PYTHON_CMD train_cli.py --pool \"$pool\" --pool-ratio \"$POOL_RATIO\" --dataset \"$dataset\" --experiment-config \"$CONFIG_PATH\" --tag \"${TAG_PREFIX}_${pool}_${dataset}\""
     if [ -n "$LOG_FILE" ]; then
       cmd="$cmd --log-file \"$LOG_FILE\""
     fi

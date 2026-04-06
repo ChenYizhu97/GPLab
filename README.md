@@ -44,12 +44,12 @@ This is a benchmark harness, not a general-purpose graph learning framework.
 
 ```text
 GPLab/
-  main.py
-  training.py
+  train_cli.py
+  train_loop.py
   query.py
   replay.py
-  run_job.py
-  normalize_job.py
+  run_train_job.py
+  normalize_train_job.py
   expand_cases.py
   config/
   experiment/
@@ -61,16 +61,16 @@ GPLab/
 
 Key modules:
 
-- `main.py`: CLI entrypoint that merges TOML config with command-line overrides
-- `run_job.py`: strict automation-oriented execution of one normalized job file
-- `normalize_job.py`: emit a canonical complete job object without executing it
+- `train_cli.py`: human-facing CLI entrypoint that merges TOML config with command-line overrides
+- `run_train_job.py`: strict automation-oriented execution of one complete job file
+- `normalize_train_job.py`: validate and canonicalize one complete train job without executing it
 - `expand_cases.py`: emit a case manifest without executing anything
-- `experiment/config.py`: request normalization and validation
-- `experiment/runner.py`: dataset loading, seed resolution, model construction, and multi-run execution
+- `experiment/request_cli.py` / `experiment/request_job.py`: input-specific request builders
+- `experiment/execute.py`: dataset loading, seed resolution, model construction, and multi-run execution
 - `experiment/record.py`: `spec`, `runtime`, `result`, and `record_id` assembly
 - `model/`: shared graph classifier backbone with `sum` and `plain` variants
 - `layers/resolver.py`: convolution resolver, pooling resolver, and custom plugin loading
-- `layers/pool/PoolAdapter.py`: dense-to-sparse bridge for dense pooling methods
+- `layers/pool/DensePoolAdapter.py`: dense-to-sparse bridge for dense pooling methods
 - `validate.py`: smoke validation entrypoint
 - `utils/`: dataset loading, reproducibility helpers, runtime metadata, and JSONL I/O
 
@@ -90,19 +90,19 @@ If your environment does not already provide compatible `torch` and `torch-geome
 Run one experiment:
 
 ```bash
-python3 main.py --pool sagpool --pool-ratio 0.5 --dataset PROTEINS
+python3 train_cli.py --pool sagpool --pool-ratio 0.5 --dataset PROTEINS
 ```
 
 Run the plain model variant:
 
 ```bash
-python3 main.py --pool sagpool --pool-ratio 0.5 --dataset PROTEINS --model-type plain
+python3 train_cli.py --pool sagpool --pool-ratio 0.5 --dataset PROTEINS --model-type plain
 ```
 
 Append the result to a JSONL log:
 
 ```bash
-python3 main.py \
+python3 train_cli.py \
   --pool sparsepool \
   --pool-ratio 0.5 \
   --dataset PROTEINS \
@@ -113,7 +113,7 @@ python3 main.py \
 Replay an exact seed list from the CLI:
 
 ```bash
-python3 main.py \
+python3 train_cli.py \
   --pool diffpool \
   --pool-ratio 0.5 \
   --dataset PROTEINS \
@@ -165,7 +165,7 @@ Built-in pooling methods:
 - `diffpool`
 - `densepool`
 
-Sparse poolers work directly on sparse graph batches. Dense poolers are wrapped by `PoolAdapter`, which converts sparse batches to dense tensors, applies dense pooling, and converts the pooled coarse graph back to sparse format so the shared downstream backbone can stay unchanged.
+Sparse poolers work directly on sparse graph batches. Dense poolers are wrapped by `DensePoolAdapter`, which converts sparse batches to dense tensors, applies dense pooling, and converts the pooled coarse graph back to sparse format so the shared downstream backbone can stay unchanged.
 
 ### Pooling Contract
 
@@ -223,7 +223,7 @@ Custom pooling modules are loaded with:
 Example:
 
 ```bash
-python3 main.py \
+python3 train_cli.py \
   --pool examples.custom_pool_plugin:build_pool \
   --pool-ratio 0.6 \
   --dataset PROTEINS
@@ -404,11 +404,11 @@ Current seed modes are:
 
 If you want to understand the implementation quickly, this is the shortest path:
 
-1. `main.py`
-2. `experiment/runner.py`
-3. `model/Model.py`
+1. `train_cli.py`
+2. `experiment/execute.py`
+3. `model/classifier_base.py`
 4. `layers/resolver.py`
-5. `layers/pool/PoolAdapter.py`
+5. `layers/pool/DensePoolAdapter.py`
 6. `query.py`
 7. `replay.py`
 

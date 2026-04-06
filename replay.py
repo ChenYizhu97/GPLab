@@ -69,7 +69,7 @@ def _build_command(
     spec = record["spec"]
     command = [
         sys.executable,
-        "main.py",
+        "train_cli.py",
         "--pool",
         spec["pool"]["name"],
         "--pool-ratio",

@@ -1,11 +1,10 @@
 import toml
 import typer
-from experiment.config import build_request_from_sources
-from experiment.record import append_record_if_needed
-from experiment.runner import run_experiment
-from experiment.record import summarize_record
 from typing_extensions import Annotated, Optional
-from utils.jobs import load_job_file
+
+from experiment.execute import execute_request
+from experiment.record import append_record_if_needed, summarize_record
+from experiment.request_cli import build_cli_request
 from utils.presentation import build_error_payload, emit_json, validate_output_format
 
 app = typer.Typer(pretty_exceptions_enable=False)
@@ -25,19 +24,16 @@ def main(
         seed_base: Annotated[Optional[int], typer.Option(help="Base integer for deterministic seed generation in auto mode.")] = None,
         seed_list: Annotated[Optional[str], typer.Option(help="Comma-separated seed list for exact replay, for example: 11,22,33")] = None,
         allow_duplicate_seeds: Annotated[Optional[bool], typer.Option(help="Allow duplicate seeds in file or list mode.")] = None,
-        job_file: Annotated[Optional[str], typer.Option(help="Path to a single experiment job JSON file.")] = None,
         output_format: Annotated[str, typer.Option(help="Output format: text or json.")] = "text",
 ):
     output_format = validate_output_format(output_format)
     try:
         model_conf = toml.load(model_config)
         experiment_conf = toml.load(experiment_config)
-        job = load_job_file(job_file) if job_file is not None else None
 
-        conf, final_log_file, final_seed_mode, final_seed_base, final_allow_dup, final_seed_list = build_request_from_sources(
+        conf, final_log_file, final_seed_mode, final_seed_base, final_allow_dup, final_seed_list = build_cli_request(
             model_conf=model_conf,
             experiment_conf=experiment_conf,
-            job=job,
             pool=pool,
             pool_ratio=pool_ratio,
             dataset_name=dataset,
@@ -50,7 +46,7 @@ def main(
             allow_duplicate_seeds=allow_duplicate_seeds,
         )
 
-        record = run_experiment(conf, emit_text=output_format == "text")
+        record = execute_request(conf, emit_text=output_format == "text")
         append_record_if_needed(final_log_file, record)
 
         if output_format == "json":
@@ -61,7 +57,6 @@ def main(
                     "record": record,
                     "summary": summarize_record(record),
                     "request": {
-                        "job_file": job_file,
                         "log_file": final_log_file,
                         "seed_mode": final_seed_mode,
                         "seed_base": final_seed_base,
@@ -74,7 +69,7 @@ def main(
         raise
     except Exception as exc:
         if output_format == "json":
-            emit_json(build_error_payload("train_error", exc, details={"job_file": job_file, "log_file": log_file}))
+            emit_json(build_error_payload("train_error", exc, details={"log_file": log_file}))
             raise typer.Exit(code=1)
         raise
 

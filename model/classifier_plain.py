@@ -2,10 +2,10 @@ from typing import Optional
 
 from torch import Tensor
 
-from .Model import GRAPH_CLASSIFIER_BASE
+from .classifier_base import GraphClassifierBase
 
 
-class GraphClassifierPlain(GRAPH_CLASSIFIER_BASE):
+class GraphClassifierPlain(GraphClassifierBase):
     def __init__(self, *args, norm: Optional[str] = "layer_norm", **kwargs) -> None:
         super().__init__(*args, norm=norm or "layer_norm", **kwargs)
 

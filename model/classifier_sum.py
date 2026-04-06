@@ -1,9 +1,9 @@
 from torch import Tensor
 
-from .Model import GRAPH_CLASSIFIER_BASE
+from .classifier_base import GraphClassifierBase
 
 
-class GraphClassifierSum(GRAPH_CLASSIFIER_BASE):
+class GraphClassifierSum(GraphClassifierBase):
     def _readout_before_pool(self, x: Tensor, batch: Tensor) -> Tensor:
         return self.global_pool(x=x, batch=batch)
 

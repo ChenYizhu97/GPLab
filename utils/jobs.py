@@ -31,34 +31,8 @@ AUTOMATION_TRAIN_DEFAULTS = {
     "allow_duplicate_seeds": False,
 }
 
-AUTOMATION_JOB_DEFAULTS = {
-    "dataset": "PROTEINS",
-    "pool": {
-        "name": "nopool",
-        "ratio": 0.5,
-    },
-    "model": AUTOMATION_MODEL_DEFAULTS,
-    "train": AUTOMATION_TRAIN_DEFAULTS,
-    "log_file": None,
-    "tag": None,
-}
-
 JOB_TOP_LEVEL_FIELDS = {"dataset", "pool", "model", "train", "log_file", "tag"}
 JOB_POOL_FIELDS = {"name", "ratio"}
-JOB_MODEL_FIELDS = {"variant"}
-JOB_TRAIN_FIELDS = {
-    "runs",
-    "lr",
-    "batch_size",
-    "patience",
-    "epochs",
-    "train_ratio",
-    "val_ratio",
-    "seed_mode",
-    "seed_base",
-    "seed_list",
-    "allow_duplicate_seeds",
-}
 FULL_MODEL_FIELDS = set(AUTOMATION_MODEL_DEFAULTS)
 FULL_TRAIN_FIELDS = set(AUTOMATION_TRAIN_DEFAULTS)
 
@@ -74,6 +48,13 @@ def _reject_unknown_fields(payload: dict, *, allowed: set[str], label: str) -> N
     if unknown:
         joined = ", ".join(unknown)
         raise ValueError(f"Unknown {label} field(s): {joined}.")
+
+
+def _require_keys(payload: dict, *, required: set[str], label: str) -> None:
+    missing = sorted(required - set(payload))
+    if missing:
+        joined = ", ".join(missing)
+        raise ValueError(f"Missing required {label} field(s): {joined}.")
 
 
 def _normalize_seed_list(seed_list) -> Optional[list[int]]:
@@ -116,13 +97,6 @@ def _normalize_float(value, *, field_name: str) -> float:
     return float(value)
 
 
-def _require_keys(payload: dict, *, required: set[str], label: str) -> None:
-    missing = sorted(required - set(payload))
-    if missing:
-        joined = ", ".join(missing)
-        raise ValueError(f"Missing required {label} field(s): {joined}.")
-
-
 def load_job_file(path: str) -> dict:
     job_path = Path(path)
     if not job_path.exists():
@@ -136,74 +110,13 @@ def load_job_file(path: str) -> dict:
     return _require_mapping(payload, label="job")
 
 
-def normalize_job_payload(job: dict) -> dict:
-    _reject_unknown_fields(job, allowed=JOB_TOP_LEVEL_FIELDS, label="top-level")
-
-    normalized = deepcopy(AUTOMATION_JOB_DEFAULTS)
-    normalized["dataset"] = job.get("dataset", normalized["dataset"])
-    normalized["log_file"] = _normalize_optional_string(job.get("log_file"), field_name="log_file")
-    normalized["tag"] = _normalize_optional_string(job.get("tag"), field_name="tag")
-
-    if "pool" in job:
-        pool = _require_mapping(job["pool"], label="pool")
-        _reject_unknown_fields(pool, allowed=JOB_POOL_FIELDS, label="pool")
-        normalized["pool"].update(pool)
-
-    if "model" in job:
-        model = _require_mapping(job["model"], label="model")
-        _reject_unknown_fields(model, allowed=JOB_MODEL_FIELDS, label="model")
-        normalized["model"]["variant"] = model.get("variant", normalized["model"]["variant"])
-
-    if "train" in job:
-        train = _require_mapping(job["train"], label="train")
-        _reject_unknown_fields(train, allowed=JOB_TRAIN_FIELDS, label="train")
-        normalized["train"].update(train)
-        normalized["train"]["seed_list"] = _normalize_seed_list(normalized["train"].get("seed_list"))
-
-    validate_dataset(normalized["dataset"])
-    validate_pool_ratio(float(normalized["pool"]["ratio"]))
-    validate_pool(normalized["pool"]["name"])
-    validate_model_type(normalized["model"]["variant"])
-
-    normalized["pool"]["name"] = _require_string(normalized["pool"]["name"], field_name="pool.name")
-    normalized["pool"]["ratio"] = float(normalized["pool"]["ratio"])
-    normalized["train"]["runs"] = int(normalized["train"]["runs"])
-    normalized["train"]["lr"] = float(normalized["train"]["lr"])
-    normalized["train"]["batch_size"] = int(normalized["train"]["batch_size"])
-    normalized["train"]["patience"] = int(normalized["train"]["patience"])
-    normalized["train"]["epochs"] = int(normalized["train"]["epochs"])
-    normalized["train"]["train_ratio"] = float(normalized["train"]["train_ratio"])
-    normalized["train"]["val_ratio"] = float(normalized["train"]["val_ratio"])
-    normalized["train"]["seed_base"] = int(normalized["train"]["seed_base"])
-    normalized["train"]["allow_duplicate_seeds"] = _normalize_bool(
-        normalized["train"]["allow_duplicate_seeds"],
-        field_name="train.allow_duplicate_seeds",
-    )
-
-    if normalized["train"]["seed_mode"] not in {"auto", "file", "list"}:
-        raise ValueError("train.seed_mode must be 'auto', 'file', or 'list'.")
-    if normalized["train"]["seed_list"] is not None:
-        normalized["train"]["seed_mode"] = "list"
-
-    train_ratio = normalized["train"]["train_ratio"]
-    val_ratio = normalized["train"]["val_ratio"]
-    if train_ratio <= 0 or val_ratio <= 0 or train_ratio + val_ratio >= 1:
-        raise ValueError(
-            "Invalid split ratio. Require train_ratio > 0, val_ratio > 0, and train_ratio + val_ratio < 1."
-        )
-    if normalized["train"]["runs"] <= 0:
-        raise ValueError("Invalid runs value. Require train.runs > 0.")
-
-    return normalized
-
-
-def normalize_complete_job_payload(job: dict) -> dict:
+def normalize_train_job(job: dict) -> dict:
     raw = _require_mapping(job, label="job")
     _reject_unknown_fields(raw, allowed=JOB_TOP_LEVEL_FIELDS, label="top-level")
     _require_keys(raw, required=JOB_TOP_LEVEL_FIELDS, label="top-level")
 
     pool = _require_mapping(raw["pool"], label="pool")
-    _reject_unknown_fields(pool, allowed=FULL_MODEL_FIELDS if False else JOB_POOL_FIELDS, label="pool")
+    _reject_unknown_fields(pool, allowed=JOB_POOL_FIELDS, label="pool")
     _require_keys(pool, required=JOB_POOL_FIELDS, label="pool")
 
     model = _require_mapping(raw["model"], label="model")
@@ -248,12 +161,15 @@ def normalize_complete_job_payload(job: dict) -> dict:
         "log_file": _normalize_optional_string(raw["log_file"], field_name="log_file"),
         "tag": _normalize_optional_string(raw["tag"], field_name="tag"),
     }
+
     validate_dataset(normalized["dataset"])
     validate_pool_ratio(normalized["pool"]["ratio"])
     validate_pool(normalized["pool"]["name"])
     validate_model_type(normalized["model"]["variant"])
+
     if normalized["train"]["seed_mode"] not in {"auto", "file", "list"}:
         raise ValueError("train.seed_mode must be 'auto', 'file', or 'list'.")
+
     train_ratio = normalized["train"]["train_ratio"]
     val_ratio = normalized["train"]["val_ratio"]
     if train_ratio <= 0 or val_ratio <= 0 or train_ratio + val_ratio >= 1:
@@ -264,10 +180,11 @@ def normalize_complete_job_payload(job: dict) -> dict:
         raise ValueError("Invalid runs value. Require train.runs > 0.")
     if normalized["train"]["seed_list"] is not None and normalized["train"]["seed_mode"] != "list":
         raise ValueError("train.seed_mode must be 'list' when train.seed_list is provided in a complete job.")
+
     return normalized
 
 
-def normalized_job_case_id(job: dict) -> str:
+def compute_train_job_case_id(job: dict) -> str:
     payload = {
         "dataset": job["dataset"],
         "pool": {
@@ -275,6 +192,12 @@ def normalized_job_case_id(job: dict) -> str:
             "ratio": job["pool"]["ratio"],
         },
         "model": {
+            "hidden_features": job["model"]["hidden_features"],
+            "nonlinearity": job["model"]["nonlinearity"],
+            "p_dropout": job["model"]["p_dropout"],
+            "conv_layer": job["model"]["conv_layer"],
+            "pre_gnn": job["model"]["pre_gnn"],
+            "post_gnn": job["model"]["post_gnn"],
             "variant": job["model"]["variant"],
         },
         "train": {
@@ -309,21 +232,26 @@ def build_case_manifest(
     for dataset in datasets:
         for pool in pools:
             for model_type in model_types:
-                job_payload = {
-                    "dataset": dataset,
-                    "pool": {"name": pool, "ratio": pool_ratio},
-                    "model": {"variant": model_type},
-                    "log_file": log_file,
-                    "tag": f"{tag_prefix}_{pool}_{dataset}_{model_type}" if tag_prefix else None,
-                }
+                model_block = deepcopy(AUTOMATION_MODEL_DEFAULTS)
+                model_block["variant"] = model_type
+
+                train_block = deepcopy(AUTOMATION_TRAIN_DEFAULTS)
                 if train_overrides:
-                    job_payload["train"] = deepcopy(train_overrides)
-                job = normalize_job_payload(
-                    job_payload
+                    train_block.update(deepcopy(train_overrides))
+
+                job = normalize_train_job(
+                    {
+                        "dataset": dataset,
+                        "pool": {"name": pool, "ratio": pool_ratio},
+                        "model": model_block,
+                        "train": train_block,
+                        "log_file": log_file,
+                        "tag": f"{tag_prefix}_{pool}_{dataset}_{model_type}" if tag_prefix else None,
+                    }
                 )
                 manifest.append(
                     {
-                        "case_id": normalized_job_case_id(job),
+                        "case_id": compute_train_job_case_id(job),
                         "dataset": dataset,
                         "pool": pool,
                         "pool_ratio": pool_ratio,
@@ -358,6 +286,7 @@ def build_execution_plan_from_configs(
                 model_block = deepcopy(AUTOMATION_MODEL_DEFAULTS)
                 model_block.update(deepcopy(model_conf["model"]))
                 model_block["variant"] = model_type
+
                 train_block = deepcopy(AUTOMATION_TRAIN_DEFAULTS)
                 train_block.update(
                     {
@@ -375,7 +304,8 @@ def build_execution_plan_from_configs(
                     train_block["seed_mode"] = "list"
                 if allow_duplicate_seeds is not None:
                     train_block["allow_duplicate_seeds"] = allow_duplicate_seeds
-                job = normalize_complete_job_payload(
+
+                job = normalize_train_job(
                     {
                         "dataset": dataset,
                         "pool": {"name": pool, "ratio": pool_ratio},
@@ -387,7 +317,7 @@ def build_execution_plan_from_configs(
                 )
                 manifest.append(
                     {
-                        "case_id": normalized_job_case_id(job),
+                        "case_id": compute_train_job_case_id(job),
                         "dataset": dataset,
                         "pool": pool,
                         "pool_ratio": pool_ratio,

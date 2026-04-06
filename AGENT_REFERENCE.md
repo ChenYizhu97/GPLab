@@ -14,10 +14,10 @@ This file defines stable facts, approved tool surfaces, and execution rules for 
 
 ### AUTOMATION_ENTRYPOINTS
 - Type: string[]
-- Value: `["run_job.py", "normalize_job.py", "expand_cases.py", "query.py", "replay.py", "validate.py"]`
+- Value: `["run_train_job.py", "normalize_train_job.py", "expand_cases.py", "query.py", "replay.py", "validate.py"]`
 - Meaning: Approved machine-facing scripts.
 - Use: Build automation workflows from these entrypoints.
-- Do not infer: Do not assume `main.py` is the preferred automation surface. It remains primarily a human-oriented composition entrypoint.
+- Do not infer: Do not assume `train_cli.py` is the preferred automation surface. It remains primarily a human-oriented composition entrypoint.
 
 ### SUPPORTED_DATASETS
 - Type: string[]
@@ -54,18 +54,18 @@ This file defines stable facts, approved tool surfaces, and execution rules for 
 - Use: Interpret dense pooled outputs as fixed cluster slots, not retained input nodes.
 - Do not infer: Do not infer per-cluster pruning or output-slot invalidation from weak assignments.
 
-### NORMALIZED_JOB_DEFAULTS
+### EXPAND_CASES_DEFAULTS
 - Type: object
 - Value: `{"dataset": "PROTEINS", "pool": {"name": "nopool", "ratio": 0.5}, "model": {"hidden_features": 128, "nonlinearity": "relu", "p_dropout": 0.0, "conv_layer": "GCN", "pre_gnn": [128], "post_gnn": [256, 128], "variant": "sum"}, "train": {"runs": 10, "lr": 0.0005, "batch_size": 32, "patience": 50, "epochs": 500, "train_ratio": 0.8, "val_ratio": 0.1, "seed_mode": "auto", "seed_base": 20260320, "seed_list": null, "allow_duplicate_seeds": false}, "log_file": null, "tag": null}`
-- Meaning: Explicit defaults filled by normalized automation jobs.
-- Use: Interpret missing job fields after normalization and build canonical request objects.
-- Do not infer: Do not assume legacy TOML defaults are part of strict automation job execution.
+- Meaning: Internal defaults used when `expand_cases.py` materializes complete jobs.
+- Use: Expect emitted manifest jobs to be complete even when callers omit optional overrides.
+- Do not infer: Do not assume `normalize_train_job.py` accepts partial jobs or fills missing fields.
 
 ### TRAIN_RESULT_SCHEMA
 - Type: object
 - Value: `{"required_success_fields": ["ok", "kind", "record", "summary", "request"], "required_error_fields": ["ok", "kind", "error.type", "error.message"]}`
 - Meaning: Public payload contract for train execution.
-- Use: Validate `run_job.py` outputs and `replay.py` rerun payloads.
+- Use: Validate `run_train_job.py` outputs and `replay.py` rerun payloads.
 - Do not infer: Do not assume undocumented top-level fields are stable.
 
 ### QUERY_RESULT_SCHEMA
@@ -100,9 +100,9 @@ This file defines stable facts, approved tool surfaces, and execution rules for 
 
 ### Read-only Tools
 
-#### normalize_job
+#### normalize_train_job
 - Purpose: Validate a job file and emit the canonical complete request object.
-- Command: `python3 normalize_job.py --job-file <path> --output-format json`
+- Command: `python3 normalize_train_job.py --job-file <path> --output-format json`
 - Inputs:
   - `--job-file`: path to one job JSON object
   - `--output-format`: `json` or `text`
@@ -115,7 +115,7 @@ This file defines stable facts, approved tool surfaces, and execution rules for 
   - none
 - Use when:
   - you need a stable executable request object before training
-  - you need explicit defaults filled
+  - you need strict schema validation before execution
   - you need to validate job syntax without running training
 - Do not use when:
   - you already have a normalized job object in memory
@@ -129,7 +129,7 @@ This file defines stable facts, approved tool surfaces, and execution rules for 
   - `--datasets`: comma-separated dataset list
   - `--model-types`: comma-separated model variant list
   - `--pool-ratio`: pooling ratio for every case
-  - optional train overrides: `--runs`, `--epochs`, `--patience`, `--lr`, `--batch-size`, `--train-ratio`, `--val-ratio`
+  - optional train overrides: `--runs`, `--epochs`, `--patience`, `--lr`, `--batch-size`, `--train-ratio`, `--val-ratio`, `--seed-mode`, `--seed-base`, `--allow-duplicate-seeds`
   - optional routing fields: `--log-file`, `--tag-prefix`
 - Output:
   - stdout success: `case_manifest` payload with `cases` and `summary.total`
@@ -190,9 +190,9 @@ This file defines stable facts, approved tool surfaces, and execution rules for 
 
 ### Mutating Tools
 
-#### run_job
+#### run_train_job
 - Purpose: Execute one complete normalized automation job.
-- Command: `python3 run_job.py --job-file <path> --output-format json`
+- Command: `python3 run_train_job.py --job-file <path> --output-format json`
 - Inputs:
   - `--job-file`: path to one complete job JSON object
   - `--output-format`: `json` or `text`
@@ -238,12 +238,12 @@ This file defines stable facts, approved tool surfaces, and execution rules for 
   - you need machine-readable per-case results and subprocess metadata
 - Do not use when:
   - you need a scheduler, sweep engine, or change-impact analyzer
-  - you only need to validate one job file; use `normalize_job` or `run_job` instead
+  - you only need to validate one job file; use `normalize_train_job` or `run_train_job` instead
 
 ## Rules
-- Prefer `run_job.py` over `main.py` for automation execution.
+- Prefer `run_train_job.py` over `train_cli.py` for automation execution.
 - If the task only requires normalization or planning, do not call training or validation tools.
-- Before executing any mutating tool, prefer `normalize_job` or `expand_cases` when the caller benefits from explicit request objects or case plans.
+- Before executing any mutating tool, prefer `normalize_train_job` or `expand_cases` when the caller benefits from explicit request objects or case plans.
 - Treat payload shapes documented in `Static Facts` as public interface contracts. Do not rely on undocumented top-level fields.
 - When static facts conflict with runtime behavior, prefer code and runtime results, and report the conflict.
 - Do not invent datasets, pools, output formats, or replay compatibility states beyond the values documented here.
@@ -252,9 +252,9 @@ This file defines stable facts, approved tool surfaces, and execution rules for 
 
 ## Recommended Workflow
 1. Read the user task and decide whether it requires normalization, planning, execution, replay, querying, or validation.
-2. If the task starts from a job file, run `normalize_job` first when explicit defaults or early schema validation matter.
+2. If the task starts from a job file, run `normalize_train_job` first when early schema validation matters.
 3. If the task starts from combinations rather than one job, run `expand_cases` first to obtain a stable manifest.
-4. Use `run_job` for strict single-job execution, `query.py` for persisted summaries, `replay.py` for deterministic reruns, and `validate.py` for caller-directed smoke checks.
+4. Use `run_train_job` for strict single-job execution, `query.py` for persisted summaries, `replay.py` for deterministic reruns, and `validate.py` for caller-directed smoke checks.
 5. After any mutating operation, prefer reading structured JSON payloads rather than scraping console text.
 
 ## Examples

@@ -21,6 +21,9 @@ def main(
     batch_size: Annotated[Optional[int], typer.Option(help="Optional batch-size override.")] = None,
     train_ratio: Annotated[Optional[float], typer.Option(help="Optional train split override.")] = None,
     val_ratio: Annotated[Optional[float], typer.Option(help="Optional validation split override.")] = None,
+    seed_mode: Annotated[Optional[str], typer.Option(help="Optional seed mode override.")] = None,
+    seed_base: Annotated[Optional[int], typer.Option(help="Optional seed base override.")] = None,
+    allow_duplicate_seeds: Annotated[Optional[bool], typer.Option(help="Optional duplicate-seed override.")] = None,
     log_file: Annotated[Optional[str], typer.Option(help="Optional log file for generated jobs.")] = None,
     tag_prefix: Annotated[Optional[str], typer.Option(help="Optional tag prefix for generated cases.")] = None,
     output_format: Annotated[str, typer.Option(help="Output format: text or json.")] = "json",
@@ -36,6 +39,9 @@ def main(
             ("batch_size", batch_size),
             ("train_ratio", train_ratio),
             ("val_ratio", val_ratio),
+            ("seed_mode", seed_mode),
+            ("seed_base", seed_base),
+            ("allow_duplicate_seeds", allow_duplicate_seeds),
         ):
             if value is not None:
                 train_overrides[key] = value

@@ -9,7 +9,7 @@ from tqdm import tqdm
 from experiment.record import build_record
 from model.classifier_plain import GraphClassifierPlain
 from model.classifier_sum import GraphClassifierSum
-from training import test, train
+from train_loop import evaluate_epoch, train_epoch
 from utils.dataset import build_split_indices, load_dataset, split_dataset
 from utils.io import build_runtime_meta, print_expr_info, sep_c
 from utils.reproducibility import (
@@ -64,7 +64,7 @@ def _build_metrics(device: torch.device, num_classes: int) -> dict:
     }
 
 
-def _run_single_experiment(model, dataset, run_idx: int, run_seed: int, run_split: dict, expr_conf: dict, metrics: dict, device: torch.device) -> dict:
+def _execute_single_run(model, dataset, run_idx: int, run_seed: int, run_split: dict, expr_conf: dict, metrics: dict, device: torch.device) -> dict:
     set_np_and_torch(run_seed)
     train_dataset, val_dataset, test_dataset = split_dataset(dataset, split_indices=run_split)
 
@@ -82,9 +82,9 @@ def _run_single_experiment(model, dataset, run_idx: int, run_seed: int, run_spli
 
     loop = tqdm(range(1, expr_conf["epochs"] + 1), disable=bool(expr_conf.get("_silent")))
     for epoch in loop:
-        train(model, train_loader, optimizer, loss_fn, metrics, device)
-        _, val_loss = test(model, val_loader, loss_fn, metrics, device)
-        test_acc, _ = test(model, test_loader, loss_fn, metrics, device)
+        train_epoch(model, train_loader, optimizer, loss_fn, metrics, device)
+        _, val_loss = evaluate_epoch(model, val_loader, loss_fn, metrics, device)
+        test_acc, _ = evaluate_epoch(model, test_loader, loss_fn, metrics, device)
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
@@ -111,7 +111,7 @@ def _run_single_experiment(model, dataset, run_idx: int, run_seed: int, run_spli
     }
 
 
-def run_experiment(conf: dict, *, emit_text: bool = True) -> dict:
+def execute_request(conf: dict, *, emit_text: bool = True) -> dict:
     configure_runtime_threads()
     set_np_and_torch(0)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -139,7 +139,7 @@ def run_experiment(conf: dict, *, emit_text: bool = True) -> dict:
         run_records = []
 
         for run_idx in range(1, expr_conf["runs"] + 1):
-            run_record = _run_single_experiment(
+            run_record = _execute_single_run(
                 model,
                 dataset,
                 run_idx=run_idx,

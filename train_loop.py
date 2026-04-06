@@ -16,7 +16,7 @@ def _merge_loss(loss_fn: callable, out: torch.Tensor, target: torch.Tensor, aux_
     return loss
 
 
-def train(
+def train_epoch(
         model:torch.nn.Module, 
         loader:DataLoader, 
         optimizer:torch.optim.Optimizer, 
@@ -44,7 +44,7 @@ def train(
     return float(loss)
 
 @torch.no_grad()
-def test(
+def evaluate_epoch(
     model:torch.nn.Module, 
     loader:DataLoader, 
     loss_fn:callable,

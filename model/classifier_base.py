@@ -17,7 +17,7 @@ from layers.resolver import conv_resolver, pool_resolver
 DEFAULT_CONF = "config/model.toml"
 
 
-class MODEL(torch.nn.Module):
+class BaseModel(torch.nn.Module):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._pool_validated = False
@@ -59,7 +59,7 @@ class MODEL(torch.nn.Module):
         self.CONV = config["conv_layer"]
 
 
-class GRAPH_CLASSIFIER_BASE(MODEL, ABC):
+class GraphClassifierBase(BaseModel, ABC):
     def __init__(
         self,
         n_node_features: int,

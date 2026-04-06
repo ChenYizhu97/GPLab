@@ -11,7 +11,7 @@ from ..functional import dense_connect
 from .contracts import PoolOutput
 
 
-class PoolAdapter(torch.nn.Module):
+class DensePoolAdapter(torch.nn.Module):
     def __init__(
         self,
         pool: Optional[torch.nn.Module],
@@ -22,7 +22,7 @@ class PoolAdapter(torch.nn.Module):
     ) -> None:
         super().__init__(*args, **kwargs)
         if pool is None:
-            raise ValueError("PoolAdapter requires a learnable assignment module.")
+            raise ValueError("DensePoolAdapter requires a learnable assignment module.")
 
         self.pool = pool
         self.pool_method = pool_method
