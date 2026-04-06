@@ -61,6 +61,86 @@ This file defines stable facts, approved tool surfaces, and execution rules for 
 - Use: Expect emitted manifest jobs to be complete even when callers omit optional overrides.
 - Do not infer: Do not assume `normalize_train_job.py` accepts partial jobs or fills missing fields.
 
+### TRAIN_JOB_SCHEMA
+- Type: object
+- Meaning: Required schema for `--job-file` consumed by `normalize_train_job.py` and `run_train_job.py`.
+- Use: Provide one complete train job JSON object.
+- Do not infer: Do not omit required sections or rely on missing-field defaults.
+- Required top-level fields:
+  - `dataset`
+  - `pool`
+  - `model`
+  - `train`
+  - `log_file`
+  - `tag`
+- `pool` fields:
+  - `name`: string
+  - `ratio`: number in `(0, 1]`
+- `model` fields:
+  - `hidden_features`: integer
+  - `nonlinearity`: string
+  - `p_dropout`: number
+  - `conv_layer`: string
+  - `pre_gnn`: integer array
+  - `post_gnn`: integer array
+  - `variant`: `"sum"` or `"plain"`
+- `train` fields:
+  - `runs`: integer greater than 0
+  - `lr`: number
+  - `batch_size`: integer
+  - `patience`: integer
+  - `epochs`: integer
+  - `train_ratio`: number
+  - `val_ratio`: number
+  - `seed_mode`: `"auto"`, `"file"`, or `"list"`
+  - `seed_base`: integer
+  - `seed_list`: `null` or non-empty integer array
+  - `allow_duplicate_seeds`: boolean
+- Cross-field rules:
+  - `train_ratio > 0`
+  - `val_ratio > 0`
+  - `train_ratio + val_ratio < 1`
+  - if `seed_list` is not `null`, `seed_mode` must be `"list"`
+- Validation behavior:
+  - unknown fields are rejected
+  - partial jobs are rejected
+  - unsupported dataset, pool, and model variant values are rejected
+- Example:
+
+```json
+{
+  "dataset": "PROTEINS",
+  "pool": {
+    "name": "sagpool",
+    "ratio": 0.5
+  },
+  "model": {
+    "hidden_features": 128,
+    "nonlinearity": "relu",
+    "p_dropout": 0.0,
+    "conv_layer": "GCN",
+    "pre_gnn": [128],
+    "post_gnn": [256, 128],
+    "variant": "sum"
+  },
+  "train": {
+    "runs": 10,
+    "lr": 0.0005,
+    "batch_size": 32,
+    "patience": 50,
+    "epochs": 500,
+    "train_ratio": 0.8,
+    "val_ratio": 0.1,
+    "seed_mode": "auto",
+    "seed_base": 20260320,
+    "seed_list": null,
+    "allow_duplicate_seeds": false
+  },
+  "log_file": null,
+  "tag": null
+}
+```
+
 ### TRAIN_RESULT_SCHEMA
 - Type: object
 - Value: `{"required_success_fields": ["ok", "kind", "record", "summary", "request"], "required_error_fields": ["ok", "kind", "error.type", "error.message"]}`
