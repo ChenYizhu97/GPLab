@@ -261,7 +261,7 @@ This file defines stable facts, approved tool surfaces, and execution rules for 
 
 ### Good
 - If the task is "turn these pool/dataset combinations into executable units", run `expand_cases` and stop.
-- If the task is "execute this automation job file", run `normalize_job` if explicit defaults are needed, then run `run_job`.
+- If the task is "execute this automation job file", run `normalize_train_job` if explicit validation is needed, then run `run_train_job`.
 - If the task is "rerun record X and capture the new record id", run `replay.py --run --output-format json` and read `rerun.record_id`.
 
 ### Bad

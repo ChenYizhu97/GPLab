@@ -74,6 +74,15 @@ Key modules:
 - `validate.py`: smoke validation entrypoint
 - `utils/`: dataset loading, reproducibility helpers, runtime metadata, and JSONL I/O
 
+## Execution Flows
+
+GPLab now exposes two intentionally separate train flows:
+
+- human flow: `train_cli.py` with TOML defaults plus CLI overrides
+- automation flow: `normalize_train_job.py` and `run_train_job.py` with strict complete job JSON
+
+The human CLI does not accept a job file. Machine-facing execution should prefer strict complete jobs.
+
 ## Installation
 
 GPLab depends on PyTorch, PyG, and a small set of CLI/logging packages.
@@ -119,6 +128,18 @@ python3 train_cli.py \
   --dataset PROTEINS \
   --seed-mode list \
   --seed-list 101,202,303
+```
+
+Normalize a strict automation job without running it:
+
+```bash
+python3 normalize_train_job.py --job-file /path/to/job.json --output-format json
+```
+
+Run one strict automation job:
+
+```bash
+python3 run_train_job.py --job-file /path/to/job.json --output-format json
 ```
 
 ## Supported Datasets
@@ -383,6 +404,12 @@ Run the smoke validator:
 
 ```bash
 python3 validate.py --pools sagpool,diffpool --datasets MUTAG,PROTEINS
+```
+
+Generate complete executable train jobs without running them:
+
+```bash
+python3 expand_cases.py --pools sagpool,diffpool --datasets MUTAG,PROTEINS --output-format json
 ```
 
 ## Reproducibility Notes
