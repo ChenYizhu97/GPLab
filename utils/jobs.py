@@ -5,7 +5,12 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Optional
 
-from utils.cli import validate_dataset, validate_model_type, validate_pool, validate_pool_ratio
+from utils.validation import (
+    validate_dataset_value,
+    validate_model_type_value,
+    validate_pool_ratio_value,
+    validate_pool_value,
+)
 
 
 AUTOMATION_MODEL_DEFAULTS = {
@@ -92,12 +97,6 @@ def _normalize_int_list(value, *, field_name: str, allow_empty: bool = True) -> 
     return [_normalize_int(item, field_name=f"{field_name}[]") for item in value]
 
 
-def _normalize_seed_list(seed_list) -> Optional[list[int]]:
-    if seed_list is None:
-        return None
-    return _normalize_int_list(seed_list, field_name="train.seed_list", allow_empty=False)
-
-
 def _normalize_float(value, *, field_name: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"{field_name} must be a number.")
@@ -162,7 +161,9 @@ def normalize_train_job(job: dict) -> dict:
             "val_ratio": _normalize_float(train["val_ratio"], field_name="train.val_ratio"),
             "seed_mode": _require_string(train["seed_mode"], field_name="train.seed_mode"),
             "seed_base": _normalize_int(train["seed_base"], field_name="train.seed_base"),
-            "seed_list": _normalize_seed_list(train["seed_list"]),
+            "seed_list": None
+            if train["seed_list"] is None
+            else _normalize_int_list(train["seed_list"], field_name="train.seed_list", allow_empty=False),
             "allow_duplicate_seeds": _normalize_bool(
                 train["allow_duplicate_seeds"],
                 field_name="train.allow_duplicate_seeds",
@@ -172,10 +173,10 @@ def normalize_train_job(job: dict) -> dict:
         "tag": _normalize_optional_string(raw["tag"], field_name="tag"),
     }
 
-    validate_dataset(normalized["dataset"])
-    validate_pool_ratio(normalized["pool"]["ratio"])
-    validate_pool(normalized["pool"]["name"])
-    validate_model_type(normalized["model"]["variant"])
+    validate_dataset_value(normalized["dataset"])
+    validate_pool_ratio_value(normalized["pool"]["ratio"])
+    validate_pool_value(normalized["pool"]["name"])
+    validate_model_type_value(normalized["model"]["variant"])
 
     if normalized["train"]["seed_mode"] not in {"auto", "file", "list"}:
         raise ValueError("train.seed_mode must be 'auto', 'file', or 'list'.")

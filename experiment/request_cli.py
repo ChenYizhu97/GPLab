@@ -1,7 +1,9 @@
 from copy import deepcopy
 from typing import Optional
 
-from .request_common import TrainRequestContext, build_internal_request, resolve_request_seed_options
+from utils.cli import resolve_seed_options
+
+from .request_common import TrainRequestContext, build_internal_request
 
 
 def build_cli_request(
@@ -23,7 +25,7 @@ def build_cli_request(
     merged_experiment_conf = deepcopy(experiment_conf)
 
     exp = merged_experiment_conf.get("experiment", {})
-    final_seed_mode, final_seed_base, final_allow_dup, final_seed_list = resolve_request_seed_options(
+    final_seed_mode, final_seed_base, final_allow_dup, final_seed_list = resolve_seed_options(
         seed_mode=seed_mode,
         seed_base=seed_base,
         seed_list=seed_list,

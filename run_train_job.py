@@ -1,9 +1,8 @@
 import typer
 from typing_extensions import Annotated
 
-from experiment.execute import execute_request
-from experiment.record import append_record_if_needed, summarize_record
 from experiment.request_job import build_job_request
+from experiment.train_result import execute_train_request
 from utils.jobs import load_job_file, normalize_train_job
 from utils.presentation import build_error_payload, emit_json, validate_output_format
 
@@ -20,28 +19,18 @@ def main(
         loaded_job = load_job_file(job_file)
         normalized_job = normalize_train_job(loaded_job)
         request = build_job_request(normalized_job)
-        record = execute_request(request.conf, emit_text=output_format == "text")
-        append_record_if_needed(request.log_file, record)
+        payload = execute_train_request(
+            request,
+            emit_text=output_format == "text",
+            request_details={
+                "job_file": job_file,
+                "mode": "strict_job",
+                "normalized_job": normalized_job,
+            },
+        )
 
         if output_format == "json":
-            emit_json(
-                {
-                    "ok": True,
-                    "kind": "train_result",
-                    "record": record,
-                    "summary": summarize_record(record),
-                    "request": {
-                        "job_file": job_file,
-                        "mode": "strict_job",
-                        "normalized_job": normalized_job,
-                        "log_file": request.log_file,
-                        "seed_mode": request.seed_mode,
-                        "seed_base": request.seed_base,
-                        "allow_duplicate_seeds": request.allow_duplicate_seeds,
-                        "seed_list": request.seed_list,
-                    },
-                }
-            )
+            emit_json(payload)
     except typer.Exit:
         raise
     except Exception as exc:

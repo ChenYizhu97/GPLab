@@ -59,14 +59,18 @@ def _prepare_split_metadata(conf: dict, dataset_size: int) -> list[dict]:
     return split_indices_all
 
 
-def _build_metrics(device: torch.device, num_classes: int) -> dict:
-    return {
-        "loss": Mean(device=device),
-        "acc": MulticlassAccuracy(average="micro", device=device, num_classes=num_classes),
-    }
-
-
-def _execute_single_run(model, dataset, run_idx: int, run_seed: int, run_split: dict, expr_conf: dict, metrics: dict, device: torch.device) -> dict:
+def _execute_single_run(
+    model,
+    dataset,
+    run_idx: int,
+    run_seed: int,
+    run_split: dict,
+    expr_conf: dict,
+    metrics: dict,
+    device: torch.device,
+    *,
+    show_progress: bool,
+) -> dict:
     set_np_and_torch(run_seed)
     train_dataset, val_dataset, test_dataset = split_dataset(dataset, split_indices=run_split)
 
@@ -82,7 +86,7 @@ def _execute_single_run(model, dataset, run_idx: int, run_seed: int, run_split: 
     best_test_acc = 0.0
     best_epoch = 1
 
-    loop = tqdm(range(1, expr_conf["epochs"] + 1), disable=bool(expr_conf.get("_silent")))
+    loop = tqdm(range(1, expr_conf["epochs"] + 1), disable=not show_progress)
     for epoch in loop:
         train_epoch(model, train_loader, optimizer, loss_fn, metrics, device)
         _, val_loss = evaluate_epoch(model, val_loader, loss_fn, metrics, device)
@@ -120,43 +124,44 @@ def execute_request(conf: dict, *, emit_text: bool = True) -> dict:
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     runtime = build_runtime_meta(device)
     expr_conf = working_conf["experiment"]
-    expr_conf["_silent"] = not emit_text
-    try:
-        if emit_text:
-            print_expr_info(working_conf, device)
 
-        dataset = load_dataset(working_conf["dataset"])
-        if dataset is None:
-            raise ValueError(f"Failed to load dataset '{working_conf['dataset']}'.")
-        if len(dataset) == 0:
-            raise ValueError("Loaded dataset is empty.")
+    if emit_text:
+        print_expr_info(working_conf, device)
 
-        avg_node_num = dataset._data.num_nodes // len(dataset)
-        model = _build_model(working_conf, dataset, avg_node_num, device)
-        if emit_text:
-            rprint(summary(model, data=dataset[0].to(device), leaf_module=None, max_depth=5))
+    dataset = load_dataset(working_conf["dataset"])
+    if dataset is None:
+        raise ValueError(f"Failed to load dataset '{working_conf['dataset']}'.")
+    if len(dataset) == 0:
+        raise ValueError("Loaded dataset is empty.")
 
-        split_indices_all = _prepare_split_metadata(working_conf, len(dataset))
-        metrics = _build_metrics(device, dataset.num_classes)
+    avg_node_num = dataset._data.num_nodes // len(dataset)
+    model = _build_model(working_conf, dataset, avg_node_num, device)
+    if emit_text:
+        rprint(summary(model, data=dataset[0].to(device), leaf_module=None, max_depth=5))
 
-        run_records = []
+    split_indices_all = _prepare_split_metadata(working_conf, len(dataset))
+    metrics = {
+        "loss": Mean(device=device),
+        "acc": MulticlassAccuracy(average="micro", device=device, num_classes=dataset.num_classes),
+    }
 
-        for run_idx in range(1, expr_conf["runs"] + 1):
-            run_record = _execute_single_run(
-                model,
-                dataset,
-                run_idx=run_idx,
-                run_seed=expr_conf["seeds"][run_idx - 1],
-                run_split=split_indices_all[run_idx - 1],
-                expr_conf=expr_conf,
-                metrics=metrics,
-                device=device,
-            )
-            if emit_text and run_idx != expr_conf["runs"]:
-                rprint(sep_c("-"))
+    run_records = []
 
-            run_records.append(run_record)
+    for run_idx in range(1, expr_conf["runs"] + 1):
+        run_record = _execute_single_run(
+            model,
+            dataset,
+            run_idx=run_idx,
+            run_seed=expr_conf["seeds"][run_idx - 1],
+            run_split=split_indices_all[run_idx - 1],
+            expr_conf=expr_conf,
+            metrics=metrics,
+            device=device,
+            show_progress=emit_text,
+        )
+        if emit_text and run_idx != expr_conf["runs"]:
+            rprint(sep_c("-"))
 
-        return build_record(working_conf, runtime=runtime, run_records=run_records)
-    finally:
-        expr_conf.pop("_silent", None)
+        run_records.append(run_record)
+
+    return build_record(working_conf, runtime=runtime, run_records=run_records)

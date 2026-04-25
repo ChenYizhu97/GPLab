@@ -12,17 +12,6 @@ def load_dataset(dataset: str) -> Dataset:
     return _dataset
 
 
-def build_dataset_id(dataset_name: str, dataset: Dataset) -> dict:
-    total_nodes = int(getattr(dataset._data, "num_nodes", 0)) if hasattr(dataset, "_data") else 0
-    return {
-        "name": dataset_name,
-        "num_graphs": len(dataset),
-        "num_node_features": int(dataset.num_node_features),
-        "num_classes": int(dataset.num_classes),
-        "total_nodes": total_nodes,
-    }
-
-
 def build_split_indices(
         dataset_size: int,
         seed: int,

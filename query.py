@@ -5,44 +5,11 @@ from typing_extensions import Annotated, Optional
 
 from experiment.identity import compute_benchmark_key, ensure_record_id
 from experiment.record import summarize_record
-from utils.cli import validate_dataset, validate_model_type, validate_pool
 from utils.jsonl import read_jsonl
 from utils.presentation import build_error_payload, emit_json, validate_output_format
+from utils.validation import validate_dataset_value, validate_model_type_value, validate_pool_value
 
 app = typer.Typer(pretty_exceptions_enable=False)
-
-
-def _load_jsonl(path: str) -> list[dict]:
-    return [ensure_record_id(record) for record in read_jsonl(path)]
-
-
-def _matches(record: dict, *, dataset: Optional[str], pool: Optional[str], tag: Optional[str], model_type: Optional[str]) -> bool:
-    spec = record["spec"]
-    if dataset is not None and spec["dataset"].lower() != dataset.lower():
-        return False
-    if pool is not None and spec["pool"]["name"] != pool:
-        return False
-    if tag is not None and record.get("tag") != tag:
-        return False
-    if model_type is not None and spec["model"].get("variant", "sum") != model_type:
-        return False
-    return True
-
-
-def _group_header(records: list[dict]) -> str:
-    first = records[0]
-    spec = first["spec"]
-    tags = sorted({record.get("tag") for record in records if record.get("tag") is not None})
-    parts = [
-        f"dataset={spec['dataset']}",
-        f"model={spec['model'].get('variant', 'sum')}",
-        f"benchmark={compute_benchmark_key(first)}",
-    ]
-    if len(tags) == 1:
-        parts.append(f"tag={tags[0]}")
-    elif len(tags) > 1:
-        parts.append(f"tags={len(tags)}")
-    return " | ".join(parts)
 
 
 def _sort_value(record: dict, sort_by: str) -> float:
@@ -61,7 +28,19 @@ def _print_report(records: list[dict], sort_by: str) -> None:
             key=lambda record: _sort_value(record, sort_by),
             reverse=sort_by not in {"std", "avg_val_loss", "avg_best_epoch"},
         )
-        print(_group_header(ranked))
+        first = ranked[0]
+        spec = first["spec"]
+        tags = sorted({record.get("tag") for record in ranked if record.get("tag") is not None})
+        header_parts = [
+            f"dataset={spec['dataset']}",
+            f"model={spec['model'].get('variant', 'sum')}",
+            f"benchmark={compute_benchmark_key(first)}",
+        ]
+        if len(tags) == 1:
+            header_parts.append(f"tag={tags[0]}")
+        elif len(tags) > 1:
+            header_parts.append(f"tags={len(tags)}")
+        print(" | ".join(header_parts))
         for index, record in enumerate(ranked, start=1):
             summary = summarize_record(record)
             corr = summary["val_loss_test_acc_corr"]
@@ -133,20 +112,36 @@ def main(
             raise typer.BadParameter(
                 "sort_by must be one of: mean, std, avg_best_epoch, avg_val_loss.",
                 param_hint="--sort-by",
-            )
+        )
 
         if dataset is not None:
-            validate_dataset(dataset)
+            try:
+                validate_dataset_value(dataset)
+            except ValueError as exc:
+                raise typer.BadParameter(str(exc), param_hint="--dataset") from exc
         if pool is not None:
-            validate_pool(pool)
+            try:
+                validate_pool_value(pool)
+            except ValueError as exc:
+                raise typer.BadParameter(str(exc), param_hint="--pool") from exc
         if model_type is not None:
-            validate_model_type(model_type)
+            try:
+                validate_model_type_value(model_type)
+            except ValueError as exc:
+                raise typer.BadParameter(str(exc), param_hint="--model-type") from exc
 
-        records = [
-            record
-            for record in _load_jsonl(log_file)
-            if _matches(record, dataset=dataset, pool=pool, tag=tag, model_type=model_type)
-        ]
+        records = []
+        for record in (ensure_record_id(record) for record in read_jsonl(log_file)):
+            spec = record["spec"]
+            if dataset is not None and spec["dataset"].lower() != dataset.lower():
+                continue
+            if pool is not None and spec["pool"]["name"] != pool:
+                continue
+            if tag is not None and record.get("tag") != tag:
+                continue
+            if model_type is not None and spec["model"].get("variant", "sum") != model_type:
+                continue
+            records.append(record)
 
         if report:
             if output_format == "json":

@@ -1,10 +1,7 @@
 from copy import deepcopy
-from typing import Optional
-
 import numpy as np
 
 from experiment.identity import compute_benchmark_key, ensure_record_id
-from utils.jsonl import append_jsonl
 
 
 def build_spec(conf: dict) -> dict:
@@ -65,11 +62,6 @@ def build_record(conf: dict, *, runtime: dict, run_records: list[dict]) -> dict:
         record["tag"] = conf["tag"]
     ensure_record_id(record)
     return record
-
-
-def append_record_if_needed(log_file: Optional[str], record: dict) -> None:
-    if log_file is not None:
-        append_jsonl(log_file, record)
 
 
 def summarize_record(record: dict) -> dict:

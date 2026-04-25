@@ -24,10 +24,6 @@ def conv_resolver(layer: str):
     )
 
 
-def list_builtin_pools() -> tuple[str, ...]:
-    return BUILTIN_POOLS
-
-
 def _dense_cluster_size(avg_node_num: Optional[float], ratio: float) -> int:
     if avg_node_num is None:
         raise ValueError("avg_node_num is required for dense pooling methods.")

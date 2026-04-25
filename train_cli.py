@@ -2,9 +2,8 @@ import toml
 import typer
 from typing_extensions import Annotated, Optional
 
-from experiment.execute import execute_request
-from experiment.record import append_record_if_needed, summarize_record
 from experiment.request_cli import build_cli_request
+from experiment.train_result import execute_train_request
 from utils.presentation import build_error_payload, emit_json, validate_output_format
 
 app = typer.Typer(pretty_exceptions_enable=False)
@@ -46,25 +45,10 @@ def main(
             allow_duplicate_seeds=allow_duplicate_seeds,
         )
 
-        record = execute_request(request.conf, emit_text=output_format == "text")
-        append_record_if_needed(request.log_file, record)
+        payload = execute_train_request(request, emit_text=output_format == "text")
 
         if output_format == "json":
-            emit_json(
-                {
-                    "ok": True,
-                    "kind": "train_result",
-                    "record": record,
-                    "summary": summarize_record(record),
-                    "request": {
-                        "log_file": request.log_file,
-                        "seed_mode": request.seed_mode,
-                        "seed_base": request.seed_base,
-                        "allow_duplicate_seeds": request.allow_duplicate_seeds,
-                        "seed_list": request.seed_list,
-                    },
-                }
-            )
+            emit_json(payload)
     except typer.Exit:
         raise
     except Exception as exc:

@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 from typing import Any, Optional
 
 import typer
@@ -39,9 +38,3 @@ def build_error_payload(kind: str, exc: Exception, details: Optional[dict[str, A
     if details:
         payload["error"]["details"] = details
     return payload
-
-
-def ensure_parent_dir(path: Optional[str]) -> None:
-    if path is None:
-        return
-    Path(path).expanduser().resolve().parent.mkdir(parents=True, exist_ok=True)

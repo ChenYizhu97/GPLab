@@ -16,17 +16,6 @@ from utils.presentation import build_error_payload, emit_json, validate_output_f
 app = typer.Typer(pretty_exceptions_enable=False)
 
 
-def _build_case_command(*, job_file: str) -> list[str]:
-    return [
-        sys.executable,
-        "run_train_job.py",
-        "--job-file",
-        job_file,
-        "--output-format",
-        "json",
-    ]
-
-
 @app.command()
 def main(
     pools: Annotated[str, typer.Option(help="Comma-separated pools to validate.")] = "sagpool,diffpool",
@@ -92,7 +81,14 @@ def main(
                 job_file = Path(temp_dir) / f"{case_id}.json"
                 job_file.write_text(json.dumps(planned_case["job"], ensure_ascii=False), encoding="utf-8")
                 try:
-                    command = _build_case_command(job_file=str(job_file))
+                    command = [
+                        sys.executable,
+                        "run_train_job.py",
+                        "--job-file",
+                        str(job_file),
+                        "--output-format",
+                        "json",
+                    ]
                     completed = subprocess.run(
                         command,
                         check=False,
