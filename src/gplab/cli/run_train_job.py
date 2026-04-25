@@ -1,7 +1,7 @@
 import typer
 from typing_extensions import Annotated
 
-from gplab.experiment.request_job import build_job_request
+from gplab.experiment.request import build_job_request
 from gplab.experiment.train_result import execute_train_request
 from gplab.jobs import load_job_file, normalize_train_job
 from gplab.cli.output import build_error_payload, emit_json, validate_output_format

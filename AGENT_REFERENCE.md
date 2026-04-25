@@ -171,7 +171,7 @@ This file defines stable facts, approved tool surfaces, and execution rules for 
 
 ### VALIDATION_RESULT_SCHEMA
 - Type: object
-- Value: `{"required_fields": ["ok", "kind", "mode", "plan", "cases", "summary"], "case_fields": ["case_id", "pool", "dataset", "model_type", "status", "seconds", "command"], "optional_case_fields": ["record_id", "error_type", "message", "subprocess"]}`
+- Value: `{"required_fields": ["ok", "kind", "mode", "plan", "cases", "summary"], "case_fields": ["case_id", "pool", "dataset", "model_type", "status", "seconds", "execution"], "optional_case_fields": ["record_id", "error_type", "message"]}`
 - Meaning: Public payload contract for smoke validation responses.
 - Use: Consume validation plans and results as structured data.
 - Do not infer: Do not assume validation encodes project-owned policy about what must be run.
@@ -308,14 +308,14 @@ This file defines stable facts, approved tool surfaces, and execution rules for 
   - exit code 0: all cases passed
   - exit code non-zero: one or more cases failed or orchestration failed
 - Side effects:
-  - spawns one train subprocess per case
+  - executes each planned job in the current process
   - may append records if `--log-file` is set
-  - writes one temporary experiment config directory per invocation
+  - does not generate config files
 - Preconditions:
   - use caller-provided case scope; this tool does not choose validation policy for you
 - Use when:
   - you need minimal end-to-end structural validation across selected cases
-  - you need machine-readable per-case results and subprocess metadata
+  - you need machine-readable per-case results
 - Do not use when:
   - you need a scheduler, sweep engine, or change-impact analyzer
   - you only need to validate one job file; use `gplab-normalize-job` or `gplab-run-job` instead

@@ -1,21 +1,15 @@
-import json
-import subprocess
-import sys
 import time
-from pathlib import Path
-from tempfile import TemporaryDirectory
 
-import toml
 import typer
 from typing_extensions import Annotated, Optional
 
-from gplab.paths import default_config_path, project_root
 from gplab.cli.options import parse_csv_list, parse_seed_list
 from gplab.cli.output import build_error_payload, emit_json, validate_output_format
-from gplab.jobs import build_execution_plan_from_configs
+from gplab.experiment.request import build_job_request
+from gplab.experiment.train_result import execute_train_request
+from gplab.jobs import build_case_manifest
 
 app = typer.Typer(pretty_exceptions_enable=False)
-PROJECT_ROOT = project_root()
 
 
 @app.command()
@@ -32,8 +26,6 @@ def main(
     train_ratio: Annotated[float, typer.Option(help="Train split ratio.")] = 0.8,
     val_ratio: Annotated[float, typer.Option(help="Validation split ratio.")] = 0.1,
     log_file: Annotated[Optional[str], typer.Option(help="Optional JSONL file to append smoke records.")] = None,
-    model_config: Annotated[str, typer.Option(help="Model config path.")] = default_config_path("model.toml"),
-    experiment_config: Annotated[str, typer.Option(help="Experiment config path.")] = default_config_path("experiment.toml"),
     seed_mode: Annotated[Optional[str], typer.Option(help="Seed source mode override.")] = "auto",
     seed_base: Annotated[Optional[int], typer.Option(help="Seed base override.")] = 20260320,
     seed_list: Annotated[Optional[str], typer.Option(help="Comma-separated seed list override.")] = None,
@@ -43,123 +35,76 @@ def main(
 ):
     output_format = validate_output_format(output_format)
     try:
-        model_conf = toml.load(model_config)
-        experiment_conf = toml.load(experiment_config)
-        experiment_conf.setdefault("experiment", {})
-        experiment_conf["experiment"].update(
-            {
-                "runs": runs,
-                "lr": lr,
-                "batch_size": batch_size,
-                "patience": patience,
-                "epochs": epochs,
-                "train_ratio": train_ratio,
-                "val_ratio": val_ratio,
-            }
-        )
         parsed_seed_list = parse_seed_list(seed_list)
-        planned_cases = build_execution_plan_from_configs(
-            model_conf=model_conf,
-            experiment_conf=experiment_conf,
+        train_overrides = {
+            "runs": runs,
+            "lr": lr,
+            "batch_size": batch_size,
+            "patience": patience,
+            "epochs": epochs,
+            "train_ratio": train_ratio,
+            "val_ratio": val_ratio,
+            "seed_mode": seed_mode,
+            "seed_base": seed_base,
+            "allow_duplicate_seeds": allow_duplicate_seeds,
+        }
+        if parsed_seed_list is not None:
+            train_overrides["seed_list"] = parsed_seed_list
+            train_overrides["seed_mode"] = "list"
+
+        planned_cases = build_case_manifest(
             pools=parse_csv_list(pools),
             datasets=parse_csv_list(datasets),
             model_types=[model_type],
             pool_ratio=pool_ratio,
             tag_prefix=tag_prefix,
             log_file=log_file,
-            seed_mode=seed_mode,
-            seed_base=seed_base,
-            seed_list=parsed_seed_list,
-            allow_duplicate_seeds=allow_duplicate_seeds,
+            train_overrides=train_overrides,
         )
         cases = []
-        with TemporaryDirectory(prefix="gplab_validate_") as temp_dir:
-            for planned_case in planned_cases:
-                pool = planned_case["pool"]
-                dataset = planned_case["dataset"]
-                case_id = planned_case["case_id"]
-                command = []
-                start = time.perf_counter()
-                job_file = Path(temp_dir) / f"{case_id}.json"
-                job_file.write_text(json.dumps(planned_case["job"], ensure_ascii=False), encoding="utf-8")
-                try:
-                    command = [
-                        sys.executable,
-                        "-m",
-                        "gplab.cli.run_train_job",
-                        "--job-file",
-                        str(job_file),
-                        "--output-format",
-                        "json",
-                    ]
-                    completed = subprocess.run(
-                        command,
-                        check=False,
-                        cwd=PROJECT_ROOT,
-                        capture_output=True,
-                        text=True,
-                    )
-
-                    payload = None
-                    stdout_text = completed.stdout.strip()
-                    if stdout_text:
-                        try:
-                            payload = json.loads(stdout_text)
-                        except json.JSONDecodeError:
-                            payload = None
-
-                    if payload is not None and payload.get("ok"):
-                        summary = payload["summary"]
-                        case = {
-                            "case_id": case_id,
-                            "pool": pool,
-                            "dataset": dataset,
-                            "model_type": model_type,
-                            "status": "ok",
-                            "seconds": round(time.perf_counter() - start, 4),
-                            "record_id": summary["record_id"],
-                            "command": command,
-                            "subprocess": {
-                                "returncode": completed.returncode,
-                                "job_file": str(job_file),
-                            },
-                        }
-                    else:
-                        error = (payload or {}).get("error", {})
-                        case = {
-                            "case_id": case_id,
-                            "pool": pool,
-                            "dataset": dataset,
-                            "model_type": model_type,
-                            "status": "failed",
-                            "seconds": round(time.perf_counter() - start, 4),
-                            "error_type": error.get("type", "runtime_error"),
-                            "message": error.get(
-                                "message",
-                                completed.stderr.strip() or stdout_text or "subprocess failed",
-                            ),
-                            "command": command,
-                            "subprocess": {
-                                "returncode": completed.returncode,
-                                "job_file": str(job_file),
-                            },
-                        }
-                except Exception as exc:
-                    case = {
-                        "case_id": case_id,
-                        "pool": pool,
-                        "dataset": dataset,
-                        "model_type": model_type,
-                        "status": "failed",
-                        "seconds": round(time.perf_counter() - start, 4),
-                        "error_type": type(exc).__name__,
-                        "message": str(exc),
-                        "command": command,
-                        "subprocess": {
-                            "job_file": str(job_file),
-                        },
-                    }
-                cases.append(case)
+        for planned_case in planned_cases:
+            pool = planned_case["pool"]
+            dataset = planned_case["dataset"]
+            case_id = planned_case["case_id"]
+            start = time.perf_counter()
+            try:
+                request = build_job_request(planned_case["job"])
+                run_payload = execute_train_request(
+                    request,
+                    emit_text=False,
+                    request_details={
+                        "mode": "validation",
+                        "job_case_id": case_id,
+                        "normalized_job": planned_case["job"],
+                    },
+                )
+                case = {
+                    "case_id": case_id,
+                    "pool": pool,
+                    "dataset": dataset,
+                    "model_type": model_type,
+                    "status": "ok",
+                    "seconds": round(time.perf_counter() - start, 4),
+                    "record_id": run_payload["summary"]["record_id"],
+                    "execution": {
+                        "mode": "in_process_strict_job",
+                    },
+                }
+            except Exception as exc:
+                case = {
+                    "case_id": case_id,
+                    "pool": pool,
+                    "dataset": dataset,
+                    "model_type": model_type,
+                    "status": "failed",
+                    "seconds": round(time.perf_counter() - start, 4),
+                    "error_type": type(exc).__name__,
+                    "message": str(exc),
+                    "execution": {
+                        "mode": "in_process_strict_job",
+                    },
+                }
+            cases.append(case)
 
         summary = {
             "total": len(cases),

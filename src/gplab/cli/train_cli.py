@@ -2,7 +2,8 @@ import toml
 import typer
 from typing_extensions import Annotated, Optional
 
-from gplab.experiment.request_cli import build_cli_request
+from gplab.cli.options import resolve_seed_options
+from gplab.experiment.request import build_cli_request
 from gplab.experiment.train_result import execute_train_request
 from gplab.paths import default_config_path
 from gplab.cli.output import build_error_payload, emit_json, validate_output_format
@@ -30,6 +31,14 @@ def main(
     try:
         model_conf = toml.load(model_config)
         experiment_conf = toml.load(experiment_config)
+        exp = experiment_conf.get("experiment", {})
+        final_seed_mode, final_seed_base, final_allow_dup, final_seed_list = resolve_seed_options(
+            seed_mode=seed_mode,
+            seed_base=seed_base,
+            seed_list=seed_list,
+            allow_duplicate_seeds=allow_duplicate_seeds,
+            expr_conf=exp,
+        )
 
         request = build_cli_request(
             model_conf=model_conf,
@@ -40,10 +49,10 @@ def main(
             model_type=model_type,
             tag=tag,
             log_file=log_file,
-            seed_mode=seed_mode,
-            seed_base=seed_base,
-            seed_list=seed_list,
-            allow_duplicate_seeds=allow_duplicate_seeds,
+            seed_mode=final_seed_mode,
+            seed_base=final_seed_base,
+            seed_list=final_seed_list,
+            allow_duplicate_seeds=final_allow_dup,
         )
 
         payload = execute_train_request(request, emit_text=output_format == "text")

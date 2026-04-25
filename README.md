@@ -65,7 +65,7 @@ Key modules:
 - `src/gplab/cli/`: CLI implementations exposed as `gplab-*` console commands
 - `src/gplab/data/`: TU dataset loading, splitting, and sparse batch conversion helpers
 - `src/gplab/jobs/`: strict job schema, defaults, file loading, and case manifest expansion
-- `src/gplab/experiment/request_cli.py` / `src/gplab/experiment/request_job.py`: input-specific request builders
+- `src/gplab/experiment/request.py`: request builders for human config input and strict jobs
 - `src/gplab/experiment/execute.py`: dataset loading, seed resolution, model construction, and multi-run execution
 - `src/gplab/experiment/record.py`: `spec`, `runtime`, `result`, and `record_id` assembly
 - `src/gplab/model/`: shared graph classifier backbone with `sum` and `plain` variants
@@ -368,29 +368,13 @@ gplab-replay --log-file runs/bench.jsonl --record-id <record_id> --run
 
 ## Batch Runs and Smoke Tests
 
-Run the lightweight batch launcher:
-
-```bash
-bash scripts/main.sh
-```
-
-Useful overrides for `scripts/main.sh`:
-
-- `PYTHON_CMD`
-- `POOLS`
-- `DATASETS`
-- `MODEL_TYPE`
-- `POOL_RATIO`
-- `LOG_FILE`
-- `TAG`
-
 Run the built-in smoke test sweep:
 
 ```bash
 bash scripts/smoke_test.sh
 ```
 
-The smoke test writes a TSV summary to `/tmp/gplab_smoke_results.tsv` by default. It is intended as a structural regression check, not a benchmark-quality run.
+The smoke test delegates to `gplab-validate` and writes its JSON result to `/tmp/gplab_smoke_result.json` by default. It does not generate TOML configs. It is intended as a structural regression check, not a benchmark-quality run.
 
 If your Python is not on the default path:
 

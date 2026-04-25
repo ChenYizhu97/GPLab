@@ -2,7 +2,7 @@ from typing import Any, Optional
 
 from gplab.experiment.execute import execute_request
 from gplab.experiment.record import summarize_record
-from gplab.experiment.request_common import TrainRequestContext
+from gplab.experiment.request import TrainRequestContext
 from gplab.utils.jsonl import append_jsonl
 
 

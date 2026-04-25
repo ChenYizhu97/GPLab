@@ -6,7 +6,7 @@ from typing_extensions import Annotated
 
 from gplab.experiment.identity import ensure_record_id
 from gplab.experiment.record import summarize_record
-from gplab.experiment.request_job import build_job_request
+from gplab.experiment.request import build_job_request
 from gplab.experiment.train_result import execute_train_request
 from gplab.cli.output import build_error_payload, emit_json, validate_output_format
 from gplab.jobs import compute_train_job_case_id, normalize_train_job
