@@ -164,7 +164,7 @@ This file defines stable facts, approved tool surfaces, and execution rules for 
 
 ### REPLAY_RESULT_SCHEMA
 - Type: object
-- Value: `{"required_fields": ["ok", "kind", "record", "paths", "command", "compatibility"], "optional_rerun_fields": ["rerun.requested", "rerun.ok", "rerun.returncode", "rerun.payload", "rerun.record_id", "rerun.summary", "rerun.appended_to_log"]}`
+- Value: `{"required_fields": ["ok", "kind", "record", "job", "execution", "paths", "compatibility"], "execution_fields": ["mode", "case_id"], "optional_rerun_fields": ["rerun.requested", "rerun.ok", "rerun.payload", "rerun.record_id", "rerun.summary", "rerun.appended_to_log"]}`
 - Meaning: Public payload contract for replay responses.
 - Use: Consume replay metadata and rerun handoff data without parsing prose.
 - Do not infer: Do not assume replay judges metric equivalence automatically.
@@ -245,20 +245,20 @@ This file defines stable facts, approved tool surfaces, and execution rules for 
   - you need runtime normalization of a job before execution
 
 #### gplab-replay
-- Purpose: Materialize replay configs, compare runtime metadata, and optionally rerun one recorded experiment.
+- Purpose: Rebuild a strict in-memory job from one record, compare runtime metadata, and optionally rerun it.
 - Command: `gplab-replay --log-file <path> --record-id <id> --output-format json`
 - Inputs:
   - `--log-file`: JSONL record file
   - `--record-id`: record identifier
-  - optional execution controls: `--output-dir`, `--replay-log-file`, `--run`
+  - optional execution controls: `--replay-log-file`, `--run`
 - Output:
   - stdout success: `replay_result`
   - stdout failure: `replay_error` payload when `--output-format json`
   - exit code 0: replay metadata generation succeeded and optional rerun succeeded
-  - exit code non-zero: record lookup, config materialization, or optional rerun failed
+  - exit code non-zero: record lookup, job reconstruction, or optional rerun failed
 - Side effects:
-  - writes generated config files under `--output-dir`
-  - when `--run` is set, executes a train subprocess
+  - does not generate TOML configs
+  - when `--run` is set, executes training in the current process
   - when `--replay-log-file` is set, rerun may append a new record
 - Use when:
   - you need deterministic reconstruction of one stored record

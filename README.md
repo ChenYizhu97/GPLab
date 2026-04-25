@@ -358,13 +358,13 @@ Replay one record:
 gplab-replay --log-file runs/bench.jsonl --record-id <record_id>
 ```
 
-Generate configs and run immediately:
+Run immediately:
 
 ```bash
 gplab-replay --log-file runs/bench.jsonl --record-id <record_id> --run
 ```
 
-`gplab-replay` writes temporary configs under `/tmp/gplab_replay/`, rebuilds the command from the stored `spec`, and prints a runtime compatibility summary against the current environment.
+`gplab-replay` rebuilds a strict in-memory job from the stored `spec`, prints a runtime compatibility summary against the current environment, and only executes training when `--run` is set. It does not generate TOML configs.
 
 ## Batch Runs and Smoke Tests
 

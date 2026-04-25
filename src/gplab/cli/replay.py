@@ -1,89 +1,51 @@
-import json
-import shlex
-import subprocess
-import sys
-from pathlib import Path
 from typing import Optional
 
-import toml
 import torch
 import typer
 from typing_extensions import Annotated
 
 from gplab.experiment.identity import ensure_record_id
 from gplab.experiment.record import summarize_record
-from gplab.paths import project_root
+from gplab.experiment.request_job import build_job_request
+from gplab.experiment.train_result import execute_train_request
 from gplab.cli.output import build_error_payload, emit_json, validate_output_format
+from gplab.jobs import compute_train_job_case_id, normalize_train_job
 from gplab.runtime import build_runtime_meta
 from gplab.utils.jsonl import read_jsonl
 
 app = typer.Typer(pretty_exceptions_enable=False)
-PROJECT_ROOT = project_root()
 
 
-def _materialize_configs(target_dir: Path, record: dict) -> tuple[Path, Path]:
-    target_dir.mkdir(parents=True, exist_ok=True)
-    model_path = target_dir / "model.toml"
-    experiment_path = target_dir / "experiment.toml"
-
+def _build_replay_job(record: dict, *, replay_log_file: str | None) -> dict:
     spec = record["spec"]
-    model_path.write_text(toml.dumps({"model": spec["model"]}), encoding="utf-8")
-
-    split = spec["train"]["split"]
-    experiment_payload = {
-        "experiment": {
-            "runs": len(spec["train"]["seeds"]),
-            "lr": spec["train"]["lr"],
-            "batch_size": spec["train"]["batch_size"],
-            "patience": spec["train"]["patience"],
-            "epochs": spec["train"]["epochs"],
-            "train_ratio": split["train"],
-            "val_ratio": split["val"],
+    train = spec["train"]
+    split = train["split"]
+    seeds = [int(seed) for seed in train["seeds"]]
+    return normalize_train_job(
+        {
+            "dataset": spec["dataset"],
+            "pool": {
+                "name": spec["pool"]["name"],
+                "ratio": spec["pool"]["ratio"],
+            },
+            "model": spec["model"],
+            "train": {
+                "runs": len(seeds),
+                "lr": train["lr"],
+                "batch_size": train["batch_size"],
+                "patience": train["patience"],
+                "epochs": train["epochs"],
+                "train_ratio": split["train"],
+                "val_ratio": split["val"],
+                "seed_mode": "list",
+                "seed_base": 20260320,
+                "seed_list": seeds,
+                "allow_duplicate_seeds": len(set(seeds)) != len(seeds),
+            },
+            "log_file": replay_log_file,
+            "tag": record.get("tag"),
         }
-    }
-    experiment_path.write_text(toml.dumps(experiment_payload), encoding="utf-8")
-    return model_path, experiment_path
-
-
-def _build_command(
-    *,
-    model_path: Path,
-    experiment_path: Path,
-    record: dict,
-    replay_log_file: Optional[str],
-    output_format: Optional[str] = None,
-) -> list[str]:
-    spec = record["spec"]
-    command = [
-        sys.executable,
-        "-m",
-        "gplab.cli.train_cli",
-        "--pool",
-        spec["pool"]["name"],
-        "--pool-ratio",
-        str(spec["pool"]["ratio"]),
-        "--dataset",
-        spec["dataset"],
-        "--model-type",
-        spec["model"].get("variant", "sum"),
-        "--model-config",
-        str(model_path),
-        "--experiment-config",
-        str(experiment_path),
-        "--seed-list",
-        ",".join(str(seed) for seed in spec["train"]["seeds"]),
-    ]
-    if record.get("tag") is not None:
-        command.extend(["--tag", record["tag"]])
-    if replay_log_file is not None:
-        command.extend(["--log-file", replay_log_file])
-    if output_format is not None:
-        command.extend(["--output-format", output_format])
-    return command
-
-
-def _stringify_command(command: list[str]) -> str:
-    return " ".join(shlex.quote(part) for part in command)
+    )
 
 
 def _compatibility_status(recorded: dict, current: dict) -> tuple[str, list[dict]]:
@@ -125,9 +87,8 @@ def _compatibility_status(recorded: dict, current: dict) -> tuple[str, list[dict
 def main(
     log_file: Annotated[str, typer.Option(..., help="JSONL log file containing the record to replay.")],
     record_id: Annotated[str, typer.Option(help="Record id of the JSONL entry to replay.")] = ...,
-    output_dir: Annotated[str, typer.Option(help="Directory for generated replay configs.")] = "/tmp/gplab_replay",
     replay_log_file: Annotated[Optional[str], typer.Option(help="Optional JSONL file to append the replayed result to.")] = None,
-    run: Annotated[bool, typer.Option(help="Execute the replay command after generating configs.")] = False,
+    run: Annotated[bool, typer.Option(help="Execute the replay in this process.")] = False,
     output_format: Annotated[str, typer.Option(help="Output format: text or json.")] = "text",
 ):
     output_format = validate_output_format(output_format)
@@ -139,16 +100,8 @@ def main(
                 f"record_id '{record_id}' was not found in the selected log file.",
                 param_hint="--record-id",
             )
-        spec = record["spec"]
-        target_dir = Path(output_dir) / f"{record['record_id']}_{spec['dataset']}_{spec['pool']['name']}"
-        model_path, experiment_path = _materialize_configs(target_dir, record)
-        command = _build_command(
-            model_path=model_path,
-            experiment_path=experiment_path,
-            record=record,
-            replay_log_file=replay_log_file,
-            output_format="json" if output_format == "json" else None,
-        )
+        replay_job = _build_replay_job(record, replay_log_file=replay_log_file)
+        replay_case_id = compute_train_job_case_id(replay_job)
 
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         current_runtime = build_runtime_meta(device)
@@ -157,15 +110,13 @@ def main(
             "ok": True,
             "kind": "replay_result",
             "record": summarize_record(record),
-            "paths": {
-                "replay_dir": str(target_dir),
-                "model_config": str(model_path),
-                "experiment_config": str(experiment_path),
-                "replay_log_file": replay_log_file,
+            "job": replay_job,
+            "execution": {
+                "mode": "in_process_strict_job",
+                "case_id": replay_case_id,
             },
-            "command": {
-                "argv": command,
-                "shell": _stringify_command(command),
+            "paths": {
+                "replay_log_file": replay_log_file,
             },
             "compatibility": {
                 "status": status,
@@ -175,39 +126,33 @@ def main(
 
         if output_format == "json":
             if run:
-                completed = subprocess.run(
-                    command,
-                    check=False,
-                    cwd=PROJECT_ROOT,
-                    capture_output=True,
-                    text=True,
+                request = build_job_request(replay_job)
+                run_payload = execute_train_request(
+                    request,
+                    emit_text=False,
+                    request_details={
+                        "mode": "replay",
+                        "source_record_id": record["record_id"],
+                        "job_case_id": replay_case_id,
+                        "normalized_job": replay_job,
+                    },
                 )
                 replay_payload["rerun"] = {
                     "requested": True,
-                    "ok": completed.returncode == 0,
-                    "returncode": completed.returncode,
-                    "stdout": completed.stdout,
-                    "stderr": completed.stderr,
+                    "ok": True,
+                    "payload": run_payload,
+                    "record_id": run_payload["summary"]["record_id"],
+                    "summary": run_payload["summary"],
                     "appended_to_log": replay_log_file is not None,
                 }
-                try:
-                    replay_payload["rerun"]["payload"] = json.loads(completed.stdout) if completed.stdout.strip() else None
-                except json.JSONDecodeError:
-                    replay_payload["rerun"]["payload"] = None
-                rerun_payload = replay_payload["rerun"]["payload"]
-                if isinstance(rerun_payload, dict):
-                    replay_payload["rerun"]["record_id"] = rerun_payload.get("summary", {}).get("record_id")
-                    replay_payload["rerun"]["summary"] = rerun_payload.get("summary")
-                replay_payload["ok"] = completed.returncode == 0
-                if completed.returncode != 0:
-                    replay_payload["kind"] = "replay_error"
-                    emit_json(replay_payload)
-                    raise typer.Exit(code=1)
             emit_json(replay_payload)
             return
 
-        print(f"Replay directory: {target_dir}")
-        print(f"Replay command: {_stringify_command(command)}")
+        print(f"Replay record: {record['record_id']}")
+        print(f"Replay mode: in-process strict job")
+        print(f"Replay job case_id: {replay_case_id}")
+        if replay_log_file is not None:
+            print(f"Replay log file: {replay_log_file}")
         if status == "compatible":
             print("Runtime compatibility: current environment matches recorded runtime on checked fields.")
         else:
@@ -217,7 +162,20 @@ def main(
                     print(f"  - {item['field']}: recorded={item['recorded']!r}, current={item['current']!r}")
 
         if run:
-            subprocess.run(command, check=True, cwd=PROJECT_ROOT)
+            request = build_job_request(replay_job)
+            run_payload = execute_train_request(
+                request,
+                emit_text=True,
+                request_details={
+                    "mode": "replay",
+                    "source_record_id": record["record_id"],
+                    "job_case_id": replay_case_id,
+                    "normalized_job": replay_job,
+                },
+            )
+            print(f"Rerun record_id: {run_payload['summary']['record_id']}")
+        else:
+            print("Use --run to execute this replay.")
     except typer.Exit:
         raise
     except Exception as exc:
