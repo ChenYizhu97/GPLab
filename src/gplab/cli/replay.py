@@ -10,13 +10,15 @@ import torch
 import typer
 from typing_extensions import Annotated
 
-from experiment.identity import ensure_record_id
-from experiment.record import summarize_record
-from utils.jsonl import read_jsonl
-from utils.io import build_runtime_meta
-from utils.presentation import build_error_payload, emit_json, validate_output_format
+from gplab.experiment.identity import ensure_record_id
+from gplab.experiment.record import summarize_record
+from gplab.paths import project_root
+from gplab.utils.jsonl import read_jsonl
+from gplab.utils.io import build_runtime_meta
+from gplab.utils.presentation import build_error_payload, emit_json, validate_output_format
 
 app = typer.Typer(pretty_exceptions_enable=False)
+PROJECT_ROOT = project_root()
 
 
 def _materialize_configs(target_dir: Path, record: dict) -> tuple[Path, Path]:
@@ -54,7 +56,8 @@ def _build_command(
     spec = record["spec"]
     command = [
         sys.executable,
-        "train_cli.py",
+        "-m",
+        "gplab.cli.train_cli",
         "--pool",
         spec["pool"]["name"],
         "--pool-ratio",
@@ -175,7 +178,7 @@ def main(
                 completed = subprocess.run(
                     command,
                     check=False,
-                    cwd=Path(__file__).resolve().parent,
+                    cwd=PROJECT_ROOT,
                     capture_output=True,
                     text=True,
                 )
@@ -214,7 +217,7 @@ def main(
                     print(f"  - {item['field']}: recorded={item['recorded']!r}, current={item['current']!r}")
 
         if run:
-            subprocess.run(command, check=True, cwd=Path(__file__).resolve().parent)
+            subprocess.run(command, check=True, cwd=PROJECT_ROOT)
     except typer.Exit:
         raise
     except Exception as exc:

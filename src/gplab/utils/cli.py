@@ -2,7 +2,7 @@ from typing import Optional
 
 import typer
 
-from utils.validation import (
+from gplab.utils.validation import (
     normalize_config_seed,
     validate_seed_mode_value,
 )

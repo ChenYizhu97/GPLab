@@ -1,10 +1,10 @@
 import typer
 from typing_extensions import Annotated
 
-from experiment.request_job import build_job_request
-from experiment.train_result import execute_train_request
-from utils.jobs import load_job_file, normalize_train_job
-from utils.presentation import build_error_payload, emit_json, validate_output_format
+from gplab.experiment.request_job import build_job_request
+from gplab.experiment.train_result import execute_train_request
+from gplab.utils.jobs import load_job_file, normalize_train_job
+from gplab.utils.presentation import build_error_payload, emit_json, validate_output_format
 
 app = typer.Typer(pretty_exceptions_enable=False)
 

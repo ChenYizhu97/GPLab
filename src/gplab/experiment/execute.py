@@ -8,13 +8,13 @@ from torch_geometric.nn import summary
 from torcheval.metrics import Mean, MulticlassAccuracy
 from tqdm import tqdm
 
-from experiment.record import build_record
-from model.classifier_plain import GraphClassifierPlain
-from model.classifier_sum import GraphClassifierSum
-from train_loop import evaluate_epoch, train_epoch
-from utils.dataset import build_split_indices, load_dataset, split_dataset
-from utils.io import build_runtime_meta, print_expr_info, sep_c
-from utils.reproducibility import (
+from gplab.experiment.record import build_record
+from gplab.model.classifier_plain import GraphClassifierPlain
+from gplab.model.classifier_sum import GraphClassifierSum
+from gplab.train_loop import evaluate_epoch, train_epoch
+from gplab.utils.dataset import build_split_indices, load_dataset, split_dataset
+from gplab.utils.io import build_runtime_meta, print_expr_info, sep_c
+from gplab.utils.reproducibility import (
     configure_runtime_threads,
     generate_loader,
     resolve_seeds,

@@ -4,11 +4,11 @@ from pathlib import Path
 
 import torch
 
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+SRC = Path(__file__).resolve().parents[2]
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
 
-from layers.resolver import pool_resolver
+from gplab.layers.resolver import pool_resolver
 
 
 def build_batch() -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:

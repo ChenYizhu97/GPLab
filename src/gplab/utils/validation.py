@@ -1,6 +1,6 @@
 import math
 
-from utils.registry import BUILTIN_POOLS, TU_DATASETS
+from gplab.utils.registry import BUILTIN_POOLS, TU_DATASETS
 
 MODEL_TYPES = ("sum", "plain")
 SEED_MODES = ("auto", "file", "list")

@@ -1,9 +1,9 @@
 import typer
 from typing_extensions import Annotated, Optional
 
-from utils.cli import parse_csv_list
-from utils.jobs import build_case_manifest
-from utils.presentation import build_error_payload, emit_json, validate_output_format
+from gplab.utils.cli import parse_csv_list
+from gplab.utils.jobs import build_case_manifest
+from gplab.utils.presentation import build_error_payload, emit_json, validate_output_format
 
 app = typer.Typer(pretty_exceptions_enable=False)
 

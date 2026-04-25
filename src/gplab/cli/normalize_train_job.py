@@ -1,8 +1,8 @@
 import typer
 from typing_extensions import Annotated
 
-from utils.jobs import compute_train_job_case_id, load_job_file, normalize_train_job
-from utils.presentation import build_error_payload, emit_json, validate_output_format
+from gplab.utils.jobs import compute_train_job_case_id, load_job_file, normalize_train_job
+from gplab.utils.presentation import build_error_payload, emit_json, validate_output_format
 
 app = typer.Typer(pretty_exceptions_enable=False)
 

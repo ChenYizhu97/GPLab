@@ -14,10 +14,10 @@ This file defines stable facts, approved tool surfaces, and execution rules for 
 
 ### AUTOMATION_ENTRYPOINTS
 - Type: string[]
-- Value: `["run_train_job.py", "normalize_train_job.py", "expand_cases.py", "query.py", "replay.py", "validate.py"]`
-- Meaning: Approved machine-facing scripts.
+- Value: `["gplab-run-job", "gplab-normalize-job", "gplab-expand-cases", "gplab-query", "gplab-replay", "gplab-validate"]`
+- Meaning: Approved machine-facing console commands.
 - Use: Build automation workflows from these entrypoints.
-- Do not infer: Do not assume `train_cli.py` is the preferred automation surface. It remains primarily a human-oriented composition entrypoint.
+- Do not infer: Do not assume `gplab-train` is the preferred automation surface. It remains primarily a human-oriented composition entrypoint.
 
 ### SUPPORTED_DATASETS
 - Type: string[]
@@ -37,7 +37,7 @@ This file defines stable facts, approved tool surfaces, and execution rules for 
 - Type: string
 - Value: `"<python_module>:<factory_name>"`
 - Meaning: Required string format for custom pooling factories.
-- Use: Pass custom pooling through job files or tool flags that accept pool names.
+- Use: Pass custom pooling through job files or tool flags that accept pool names. No GPLab source edit is required if Python can import the module.
 - Do not infer: Do not assume arbitrary plugin naming schemes are accepted.
 
 ### BENCHMARK_GROUPING_BOUNDARY
@@ -57,13 +57,13 @@ This file defines stable facts, approved tool surfaces, and execution rules for 
 ### EXPAND_CASES_DEFAULTS
 - Type: object
 - Value: `{"dataset": "PROTEINS", "pool": {"name": "nopool", "ratio": 0.5}, "model": {"hidden_features": 128, "nonlinearity": "relu", "p_dropout": 0.0, "conv_layer": "GCN", "pre_gnn": [128], "post_gnn": [256, 128], "variant": "sum"}, "train": {"runs": 10, "lr": 0.0005, "batch_size": 32, "patience": 50, "epochs": 500, "train_ratio": 0.8, "val_ratio": 0.1, "seed_mode": "auto", "seed_base": 20260320, "seed_list": null, "allow_duplicate_seeds": false}, "log_file": null, "tag": null}`
-- Meaning: Internal defaults used when `expand_cases.py` materializes complete jobs.
+- Meaning: Internal defaults used when `gplab-expand-cases` materializes complete jobs.
 - Use: Expect emitted manifest jobs to be complete even when callers omit optional overrides.
-- Do not infer: Do not assume `normalize_train_job.py` accepts partial jobs or fills missing fields.
+- Do not infer: Do not assume `gplab-normalize-job` accepts partial jobs or fills missing fields.
 
 ### TRAIN_JOB_SCHEMA
 - Type: object
-- Meaning: Required schema for `--job-file` consumed by `normalize_train_job.py` and `run_train_job.py`.
+- Meaning: Required schema for `--job-file` consumed by `gplab-normalize-job` and `gplab-run-job`.
 - Use: Provide one complete train job JSON object.
 - Do not infer: Do not omit required sections or rely on missing-field defaults.
 - Required top-level fields:
@@ -145,7 +145,7 @@ This file defines stable facts, approved tool surfaces, and execution rules for 
 - Type: object
 - Value: `{"required_success_fields": ["ok", "kind", "record", "summary", "request"], "required_error_fields": ["ok", "kind", "error.type", "error.message"]}`
 - Meaning: Public payload contract for train execution.
-- Use: Validate `run_train_job.py` outputs and `replay.py` rerun payloads.
+- Use: Validate `gplab-run-job` outputs and `gplab-replay` rerun payloads.
 - Do not infer: Do not assume undocumented top-level fields are stable.
 
 ### QUERY_RESULT_SCHEMA
@@ -180,9 +180,9 @@ This file defines stable facts, approved tool surfaces, and execution rules for 
 
 ### Read-only Tools
 
-#### normalize_train_job
+#### gplab-normalize-job
 - Purpose: Validate a job file and emit the canonical complete request object.
-- Command: `python3 normalize_train_job.py --job-file <path> --output-format json`
+- Command: `gplab-normalize-job --job-file <path> --output-format json`
 - Inputs:
   - `--job-file`: path to one job JSON object
   - `--output-format`: `json` or `text`
@@ -201,9 +201,9 @@ This file defines stable facts, approved tool surfaces, and execution rules for 
   - you already have a normalized job object in memory
   - you intend to execute the job immediately and do not need a separate normalization step
 
-#### expand_cases
+#### gplab-expand-cases
 - Purpose: Expand caller-provided pool/dataset/model combinations into a case manifest without execution.
-- Command: `python3 expand_cases.py --pools <csv> --datasets <csv> --model-types <csv> --pool-ratio <float> --output-format json`
+- Command: `gplab-expand-cases --pools <csv> --datasets <csv> --model-types <csv> --pool-ratio <float> --output-format json`
 - Inputs:
   - `--pools`: comma-separated pool list
   - `--datasets`: comma-separated dataset list
@@ -224,9 +224,9 @@ This file defines stable facts, approved tool surfaces, and execution rules for 
 - Do not use when:
   - you only need to execute one already-known job
 
-#### query_records
+#### gplab-query
 - Purpose: Read persisted JSONL experiment records and emit flat summaries or grouped benchmark reports.
-- Command: `python3 query.py --log-file <path> --output-format json`
+- Command: `gplab-query --log-file <path> --output-format json`
 - Inputs:
   - `--log-file`: JSONL record file
   - optional filters: `--pool`, `--dataset`, `--model-type`, `--tag`
@@ -244,9 +244,9 @@ This file defines stable facts, approved tool surfaces, and execution rules for 
 - Do not use when:
   - you need runtime normalization of a job before execution
 
-#### replay_record
+#### gplab-replay
 - Purpose: Materialize replay configs, compare runtime metadata, and optionally rerun one recorded experiment.
-- Command: `python3 replay.py --log-file <path> --record-id <id> --output-format json`
+- Command: `gplab-replay --log-file <path> --record-id <id> --output-format json`
 - Inputs:
   - `--log-file`: JSONL record file
   - `--record-id`: record identifier
@@ -270,9 +270,9 @@ This file defines stable facts, approved tool surfaces, and execution rules for 
 
 ### Mutating Tools
 
-#### run_train_job
+#### gplab-run-job
 - Purpose: Execute one complete normalized automation job.
-- Command: `python3 run_train_job.py --job-file <path> --output-format json`
+- Command: `gplab-run-job --job-file <path> --output-format json`
 - Inputs:
   - `--job-file`: path to one complete job JSON object
   - `--output-format`: `json` or `text`
@@ -288,14 +288,14 @@ This file defines stable facts, approved tool surfaces, and execution rules for 
   - normalize the job first if the caller needs explicit defaults or early validation
 - Use when:
   - you need the strict automation execution mode
-  - you need complete request semantics without legacy CLI composition
+  - you need complete strict request semantics
 - Do not use when:
   - you need only normalization
   - you need case expansion without execution
 
-#### validate_smoke
+#### gplab-validate
 - Purpose: Execute a caller-directed smoke validation set and return both plan and per-case results.
-- Command: `python3 validate.py --pools <csv> --datasets <csv> --output-format json`
+- Command: `gplab-validate --pools <csv> --datasets <csv> --output-format json`
 - Inputs:
   - `--pools`: comma-separated pools
   - `--datasets`: comma-separated datasets
@@ -318,33 +318,33 @@ This file defines stable facts, approved tool surfaces, and execution rules for 
   - you need machine-readable per-case results and subprocess metadata
 - Do not use when:
   - you need a scheduler, sweep engine, or change-impact analyzer
-  - you only need to validate one job file; use `normalize_train_job` or `run_train_job` instead
+  - you only need to validate one job file; use `gplab-normalize-job` or `gplab-run-job` instead
 
 ## Rules
-- Prefer `run_train_job.py` over `train_cli.py` for automation execution.
+- Prefer `gplab-run-job` over `gplab-train` for automation execution.
 - If the task only requires normalization or planning, do not call training or validation tools.
-- Before executing any mutating tool, prefer `normalize_train_job` or `expand_cases` when the caller benefits from explicit request objects or case plans.
+- Before executing any mutating tool, prefer `gplab-normalize-job` or `gplab-expand-cases` when the caller benefits from explicit request objects or case plans.
 - Treat payload shapes documented in `Static Facts` as public interface contracts. Do not rely on undocumented top-level fields.
 - When static facts conflict with runtime behavior, prefer code and runtime results, and report the conflict.
 - Do not invent datasets, pools, output formats, or replay compatibility states beyond the values documented here.
-- `validate.py` is a thin orchestrator. Do not treat it as project-owned policy about which cases must be run.
+- `gplab-validate` is a thin orchestrator. Do not treat it as project-owned policy about which cases must be run.
 - Do not modify this file's documented constants unless the user explicitly requests interface changes.
 
 ## Recommended Workflow
 1. Read the user task and decide whether it requires normalization, planning, execution, replay, querying, or validation.
-2. If the task starts from a job file, run `normalize_train_job` first when early schema validation matters.
-3. If the task starts from combinations rather than one job, run `expand_cases` first to obtain a stable manifest.
-4. Use `run_train_job` for strict single-job execution, `query.py` for persisted summaries, `replay.py` for deterministic reruns, and `validate.py` for caller-directed smoke checks.
+2. If the task starts from a job file, run `gplab-normalize-job` first when early schema validation matters.
+3. If the task starts from combinations rather than one job, run `gplab-expand-cases` first to obtain a stable manifest.
+4. Use `gplab-run-job` for strict single-job execution, `gplab-query` for persisted summaries, `gplab-replay` for deterministic reruns, and `gplab-validate` for caller-directed smoke checks.
 5. After any mutating operation, prefer reading structured JSON payloads rather than scraping console text.
 
 ## Examples
 
 ### Good
-- If the task is "turn these pool/dataset combinations into executable units", run `expand_cases` and stop.
-- If the task is "execute this automation job file", run `normalize_train_job` if explicit validation is needed, then run `run_train_job`.
-- If the task is "rerun record X and capture the new record id", run `replay.py --run --output-format json` and read `rerun.record_id`.
+- If the task is "turn these pool/dataset combinations into executable units", run `gplab-expand-cases` and stop.
+- If the task is "execute this automation job file", run `gplab-normalize-job` if explicit validation is needed, then run `gplab-run-job`.
+- If the task is "rerun record X and capture the new record id", run `gplab-replay --run --output-format json` and read `rerun.record_id`.
 
 ### Bad
-- Do not use `validate.py` when the task only needs one strict job execution.
+- Do not use `gplab-validate` when the task only needs one strict job execution.
 - Do not scrape human-readable stdout from machine-facing tools when `--output-format json` exists.
 - Do not assume benchmark grouping includes pool choice.

@@ -1,7 +1,7 @@
 from copy import deepcopy
 import numpy as np
 
-from experiment.identity import compute_benchmark_key, ensure_record_id
+from gplab.experiment.identity import compute_benchmark_key, ensure_record_id
 
 
 def build_spec(conf: dict) -> dict:

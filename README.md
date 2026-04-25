@@ -16,8 +16,8 @@ flowchart LR
     E --> F
     F --> G["Multi-seed Train / Val / Test"]
     G --> H["JSONL Records"]
-    H --> I["query.py"]
-    H --> J["replay.py"]
+    H --> I["gplab-query"]
+    H --> J["gplab-replay"]
 ```
 
 ## Highlights
@@ -44,42 +44,36 @@ This is a benchmark harness, not a general-purpose graph learning framework.
 
 ```text
 GPLab/
-  train_cli.py
-  train_loop.py
-  query.py
-  replay.py
-  run_train_job.py
-  normalize_train_job.py
-  expand_cases.py
+  pyproject.toml
   config/
-  experiment/
-  model/
-  layers/
-  utils/
   examples/
+  scripts/
+  src/
+    gplab/
+      cli/
+      experiment/
+      model/
+      layers/
+      utils/
 ```
 
 Key modules:
 
-- `train_cli.py`: human-facing CLI entrypoint that merges TOML config with command-line overrides
-- `run_train_job.py`: strict automation-oriented execution of one complete job file
-- `normalize_train_job.py`: validate and canonicalize one complete train job without executing it
-- `expand_cases.py`: emit a case manifest without executing anything
-- `experiment/request_cli.py` / `experiment/request_job.py`: input-specific request builders
-- `experiment/execute.py`: dataset loading, seed resolution, model construction, and multi-run execution
-- `experiment/record.py`: `spec`, `runtime`, `result`, and `record_id` assembly
-- `model/`: shared graph classifier backbone with `sum` and `plain` variants
-- `layers/resolver.py`: convolution resolver, pooling resolver, and custom plugin loading
-- `layers/pool/DensePoolAdapter.py`: dense-to-sparse bridge for dense pooling methods
-- `validate.py`: smoke validation entrypoint
-- `utils/`: dataset loading, reproducibility helpers, runtime metadata, and JSONL I/O
+- `src/gplab/cli/`: CLI implementations exposed as `gplab-*` console commands
+- `src/gplab/experiment/request_cli.py` / `src/gplab/experiment/request_job.py`: input-specific request builders
+- `src/gplab/experiment/execute.py`: dataset loading, seed resolution, model construction, and multi-run execution
+- `src/gplab/experiment/record.py`: `spec`, `runtime`, `result`, and `record_id` assembly
+- `src/gplab/model/`: shared graph classifier backbone with `sum` and `plain` variants
+- `src/gplab/layers/resolver.py`: convolution resolver, pooling resolver, and custom plugin loading
+- `src/gplab/layers/pool/DensePoolAdapter.py`: dense-to-sparse bridge for dense pooling methods
+- `src/gplab/utils/`: dataset loading, reproducibility helpers, runtime metadata, and JSONL I/O
 
 ## Execution Flows
 
 GPLab now exposes two intentionally separate train flows:
 
-- human flow: `train_cli.py` with TOML defaults plus CLI overrides
-- automation flow: `normalize_train_job.py` and `run_train_job.py` with strict complete job JSON
+- human flow: `gplab-train` with TOML defaults plus CLI overrides
+- automation flow: `gplab-normalize-job` and `gplab-run-job` with strict complete job JSON
 
 The human CLI does not accept a job file. Machine-facing execution should prefer strict complete jobs.
 
@@ -87,31 +81,33 @@ The human CLI does not accept a job file. Machine-facing execution should prefer
 
 GPLab depends on PyTorch, PyG, and a small set of CLI/logging packages.
 
+Install the package in editable mode to expose the `gplab-*` commands:
+
 ```bash
 conda activate torch_env
-python3 -m pip install -r requirements.txt
+python3 -m pip install -e .
 ```
 
-If your environment does not already provide compatible `torch` and `torch-geometric` builds, install matching versions first and then install the remaining requirements.
+If your environment does not already provide compatible `torch` and `torch-geometric` builds, install matching versions first and then install GPLab.
 
 ## Quick Start
 
 Run one experiment:
 
 ```bash
-python3 train_cli.py --pool sagpool --pool-ratio 0.5 --dataset PROTEINS
+gplab-train --pool sagpool --pool-ratio 0.5 --dataset PROTEINS
 ```
 
 Run the plain model variant:
 
 ```bash
-python3 train_cli.py --pool sagpool --pool-ratio 0.5 --dataset PROTEINS --model-type plain
+gplab-train --pool sagpool --pool-ratio 0.5 --dataset PROTEINS --model-type plain
 ```
 
 Append the result to a JSONL log:
 
 ```bash
-python3 train_cli.py \
+gplab-train \
   --pool sparsepool \
   --pool-ratio 0.5 \
   --dataset PROTEINS \
@@ -122,7 +118,7 @@ python3 train_cli.py \
 Replay an exact seed list from the CLI:
 
 ```bash
-python3 train_cli.py \
+gplab-train \
   --pool diffpool \
   --pool-ratio 0.5 \
   --dataset PROTEINS \
@@ -133,13 +129,13 @@ python3 train_cli.py \
 Normalize a strict automation job without running it:
 
 ```bash
-python3 normalize_train_job.py --job-file /path/to/job.json --output-format json
+gplab-normalize-job --job-file /path/to/job.json --output-format json
 ```
 
 Run one strict automation job:
 
 ```bash
-python3 run_train_job.py --job-file /path/to/job.json --output-format json
+gplab-run-job --job-file /path/to/job.json --output-format json
 ```
 
 ## Supported Datasets
@@ -190,7 +186,7 @@ Sparse poolers work directly on sparse graph batches. Dense poolers are wrapped 
 
 ### Pooling Contract
 
-All pooling layers are expected to return `PoolOutput` from `layers/pool/contracts.py`.
+All pooling layers are expected to return `PoolOutput` from `src/gplab/layers/pool/contracts.py`.
 
 Required fields:
 
@@ -241,10 +237,12 @@ Custom pooling modules are loaded with:
 <python_module>:<factory_name>
 ```
 
+Custom pools do not need to be registered in GPLab source code. The only requirement is that Python can import the module; use `PYTHONPATH=/path/to/your/code` if the file lives outside an installed package.
+
 Example:
 
 ```bash
-python3 train_cli.py \
+gplab-train \
   --pool examples.custom_pool_plugin:build_pool \
   --pool-ratio 0.6 \
   --dataset PROTEINS
@@ -262,7 +260,7 @@ def build_pool(
     ...
 ```
 
-GPLab first tries the full signature and then falls back to `(in_channels, ratio)` for backward compatibility.
+GPLab supports factories with the full signature above and simple factories that only accept `(in_channels, ratio)`.
 
 ## Configuration
 
@@ -309,39 +307,39 @@ Field meaning:
 - `runtime`: where it was run
 - `result`: what came out
 
-`record_id` is computed from record content and is used by `replay.py`.
+`record_id` is computed from record content and is used by `gplab-replay`.
 
 ## Querying Results
 
 Inspect a log file:
 
 ```bash
-python3 query.py --log-file runs/bench.jsonl
+gplab-query --log-file runs/bench.jsonl
 ```
 
 Show replay commands:
 
 ```bash
-python3 query.py --log-file runs/bench.jsonl --show-replay
+gplab-query --log-file runs/bench.jsonl --show-replay
 ```
 
 Filter by model variant:
 
 ```bash
-python3 query.py --log-file runs/bench.jsonl --model-type plain
+gplab-query --log-file runs/bench.jsonl --model-type plain
 ```
 
 Print a grouped benchmark report:
 
 ```bash
-python3 query.py --log-file runs/bench.jsonl --report
+gplab-query --log-file runs/bench.jsonl --report
 ```
 
 Sort grouped output by another metric:
 
 ```bash
-python3 query.py --log-file runs/bench.jsonl --report --sort-by std
-python3 query.py --log-file runs/bench.jsonl --report --sort-by avg_val_loss
+gplab-query --log-file runs/bench.jsonl --report --sort-by std
+gplab-query --log-file runs/bench.jsonl --report --sort-by avg_val_loss
 ```
 
 The grouped report compares records inside the same benchmark key derived from `dataset`, `model`, and `train` settings, so different pooling methods are ranked inside one comparable group.
@@ -351,26 +349,26 @@ The grouped report compares records inside the same benchmark key derived from `
 Replay one record:
 
 ```bash
-python3 replay.py --log-file runs/bench.jsonl --record-id <record_id>
+gplab-replay --log-file runs/bench.jsonl --record-id <record_id>
 ```
 
 Generate configs and run immediately:
 
 ```bash
-python3 replay.py --log-file runs/bench.jsonl --record-id <record_id> --run
+gplab-replay --log-file runs/bench.jsonl --record-id <record_id> --run
 ```
 
-`replay.py` writes temporary configs under `/tmp/gplab_replay/`, rebuilds the command from the stored `spec`, and prints a runtime compatibility summary against the current environment.
+`gplab-replay` writes temporary configs under `/tmp/gplab_replay/`, rebuilds the command from the stored `spec`, and prints a runtime compatibility summary against the current environment.
 
 ## Batch Runs and Smoke Tests
 
 Run the lightweight batch launcher:
 
 ```bash
-bash utils/main.sh
+bash scripts/main.sh
 ```
 
-Useful overrides for `utils/main.sh`:
+Useful overrides for `scripts/main.sh`:
 
 - `PYTHON_CMD`
 - `POOLS`
@@ -383,7 +381,7 @@ Useful overrides for `utils/main.sh`:
 Run the built-in smoke test sweep:
 
 ```bash
-bash utils/smoke_test.sh
+bash scripts/smoke_test.sh
 ```
 
 The smoke test writes a TSV summary to `/tmp/gplab_smoke_results.tsv` by default. It is intended as a structural regression check, not a benchmark-quality run.
@@ -391,25 +389,25 @@ The smoke test writes a TSV summary to `/tmp/gplab_smoke_results.tsv` by default
 If your Python is not on the default path:
 
 ```bash
-PYTHON_CMD="python3" bash utils/smoke_test.sh
+PYTHON_CMD="python3" bash scripts/smoke_test.sh
 ```
 
 To restrict the sweep:
 
 ```bash
-POOLS="sagpool diffpool" DATASETS="MUTAG PROTEINS" bash utils/smoke_test.sh
+POOLS="sagpool diffpool" DATASETS="MUTAG PROTEINS" bash scripts/smoke_test.sh
 ```
 
 Run the smoke validator:
 
 ```bash
-python3 validate.py --pools sagpool,diffpool --datasets MUTAG,PROTEINS
+gplab-validate --pools sagpool,diffpool --datasets MUTAG,PROTEINS
 ```
 
 Generate complete executable train jobs without running them:
 
 ```bash
-python3 expand_cases.py --pools sagpool,diffpool --datasets MUTAG,PROTEINS --output-format json
+gplab-expand-cases --pools sagpool,diffpool --datasets MUTAG,PROTEINS --output-format json
 ```
 
 ## Reproducibility Notes
@@ -431,12 +429,12 @@ Current seed modes are:
 
 If you want to understand the implementation quickly, this is the shortest path:
 
-1. `train_cli.py`
-2. `experiment/execute.py`
-3. `model/classifier_base.py`
-4. `layers/resolver.py`
-5. `layers/pool/DensePoolAdapter.py`
-6. `query.py`
-7. `replay.py`
+1. `src/gplab/cli/` train command implementation
+2. `src/gplab/experiment/execute.py`
+3. `src/gplab/model/classifier_base.py`
+4. `src/gplab/layers/resolver.py`
+5. `src/gplab/layers/pool/DensePoolAdapter.py`
+6. `src/gplab/cli/` query command implementation
+7. `src/gplab/cli/` replay command implementation
 
 That path covers the full lifecycle from CLI request to pooled model execution to persisted experiment record.

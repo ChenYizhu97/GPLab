@@ -6,7 +6,7 @@ from torch_geometric.nn.resolver import activation_resolver
 from torch_geometric.nn.dense import dense_diff_pool, dense_mincut_pool
 from torch_geometric.utils import to_dense_adj, to_dense_batch
 
-from utils.data import to_sparse_batch
+from gplab.utils.data import to_sparse_batch
 from ..functional import dense_connect
 from .contracts import PoolOutput
 

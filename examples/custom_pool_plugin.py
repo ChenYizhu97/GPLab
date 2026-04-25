@@ -4,13 +4,13 @@ This example demonstrates the PoolOutput contract for custom pooling plugins.
 All custom pooling methods must return a PoolOutput instance from forward().
 
 Usage:
-    python3 train_cli.py --pool examples.custom_pool_plugin:build_pool --pool-ratio 0.6
+    gplab-train --pool examples.custom_pool_plugin:build_pool --pool-ratio 0.6
 """
 
 import torch
 from torch_geometric.nn.pool import TopKPooling
 
-from layers.pool.contracts import PoolOutput
+from gplab.layers.pool.contracts import PoolOutput
 
 
 class CustomTopKPool(torch.nn.Module):
@@ -64,7 +64,7 @@ def build_pool(
     Returns:
         CustomTopKPool instance that returns PoolOutput
     """
-    # `avg_node_num` and `nonlinearity` are accepted for compatibility with Graph Pooling Lab's plugin API.
+    # `avg_node_num` and `nonlinearity` are part of Graph Pooling Lab's full plugin API.
     return CustomTopKPool(in_channels, ratio=ratio)
 
 

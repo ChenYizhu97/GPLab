@@ -7,6 +7,7 @@ set -u
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR" || exit 1
+export PYTHONPATH="$ROOT_DIR/src${PYTHONPATH:+:$PYTHONPATH}"
 
 DEFAULT_POOLS=(
   nopool
@@ -81,14 +82,14 @@ printf 'pool\tdataset\tstatus\texit_code\tseconds\n' >"$RESULTS_PATH"
 if ! sh -c "$PYTHON_CMD --version" >/dev/null 2>&1; then
   echo "PYTHON_CMD is not runnable: $PYTHON_CMD" >&2
   echo "Set PYTHON_CMD to a working command, for example:" >&2
-  echo "PYTHON_CMD='conda run -n torch_env python3' bash utils/smoke_test.sh" >&2
+  echo "PYTHON_CMD='conda run -n torch_env python3' bash scripts/smoke_test.sh" >&2
   exit 1
 fi
 
 for pool in "${POOL_LIST[@]}"; do
   for dataset in "${DATASET_LIST[@]}"; do
     start="$(date +%s)"
-    cmd="$PYTHON_CMD train_cli.py --pool \"$pool\" --pool-ratio \"$POOL_RATIO\" --dataset \"$dataset\" --experiment-config \"$CONFIG_PATH\" --tag \"${TAG_PREFIX}_${pool}_${dataset}\""
+    cmd="$PYTHON_CMD -m gplab.cli.train_cli --pool \"$pool\" --pool-ratio \"$POOL_RATIO\" --dataset \"$dataset\" --experiment-config \"$CONFIG_PATH\" --tag \"${TAG_PREFIX}_${pool}_${dataset}\""
     if [ -n "$LOG_FILE" ]; then
       cmd="$cmd --log-file \"$LOG_FILE\""
     fi

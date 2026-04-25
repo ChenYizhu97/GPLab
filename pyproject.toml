@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gplab"
+version = "0.1.0"
+description = "Graph pooling benchmark harness for graph classification."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "rich",
+    "toml",
+    "torch",
+    "torch-geometric",
+    "torcheval",
+    "tqdm",
+    "typer",
+    "typing_extensions",
+]
+
+[project.scripts]
+gplab-train = "gplab.cli.train_cli:app"
+gplab-run-job = "gplab.cli.run_train_job:app"
+gplab-normalize-job = "gplab.cli.normalize_train_job:app"
+gplab-expand-cases = "gplab.cli.expand_cases:app"
+gplab-query = "gplab.cli.query:app"
+gplab-replay = "gplab.cli.replay:app"
+gplab-validate = "gplab.cli.validate:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+

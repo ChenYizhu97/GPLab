@@ -9,11 +9,13 @@ import toml
 import typer
 from typing_extensions import Annotated, Optional
 
-from utils.cli import parse_csv_list, parse_seed_list
-from utils.jobs import build_execution_plan_from_configs
-from utils.presentation import build_error_payload, emit_json, validate_output_format
+from gplab.paths import default_config_path, project_root
+from gplab.utils.cli import parse_csv_list, parse_seed_list
+from gplab.utils.jobs import build_execution_plan_from_configs
+from gplab.utils.presentation import build_error_payload, emit_json, validate_output_format
 
 app = typer.Typer(pretty_exceptions_enable=False)
+PROJECT_ROOT = project_root()
 
 
 @app.command()
@@ -30,8 +32,8 @@ def main(
     train_ratio: Annotated[float, typer.Option(help="Train split ratio.")] = 0.8,
     val_ratio: Annotated[float, typer.Option(help="Validation split ratio.")] = 0.1,
     log_file: Annotated[Optional[str], typer.Option(help="Optional JSONL file to append smoke records.")] = None,
-    model_config: Annotated[str, typer.Option(help="Model config path.")] = "config/model.toml",
-    experiment_config: Annotated[str, typer.Option(help="Experiment config path.")] = "config/experiment.toml",
+    model_config: Annotated[str, typer.Option(help="Model config path.")] = default_config_path("model.toml"),
+    experiment_config: Annotated[str, typer.Option(help="Experiment config path.")] = default_config_path("experiment.toml"),
     seed_mode: Annotated[Optional[str], typer.Option(help="Seed source mode override.")] = "auto",
     seed_base: Annotated[Optional[int], typer.Option(help="Seed base override.")] = 20260320,
     seed_list: Annotated[Optional[str], typer.Option(help="Comma-separated seed list override.")] = None,
@@ -83,7 +85,8 @@ def main(
                 try:
                     command = [
                         sys.executable,
-                        "run_train_job.py",
+                        "-m",
+                        "gplab.cli.run_train_job",
                         "--job-file",
                         str(job_file),
                         "--output-format",
@@ -92,7 +95,7 @@ def main(
                     completed = subprocess.run(
                         command,
                         check=False,
-                        cwd=Path(__file__).resolve().parent,
+                        cwd=PROJECT_ROOT,
                         capture_output=True,
                         text=True,
                     )

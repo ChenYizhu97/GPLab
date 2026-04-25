@@ -10,11 +10,12 @@ from torch_geometric.data import Data
 from torch_geometric.nn import MLP, BatchNorm, LayerNorm
 from torch_geometric.nn.resolver import activation_resolver
 
-from layers.functional import readout
-from layers.pool.contracts import validate_pool_output
-from layers.resolver import conv_resolver, pool_resolver
+from gplab.layers.functional import readout
+from gplab.layers.pool.contracts import validate_pool_output
+from gplab.layers.resolver import conv_resolver, pool_resolver
+from gplab.paths import default_config_path
 
-DEFAULT_CONF = "config/model.toml"
+DEFAULT_CONF = default_config_path("model.toml")
 
 
 class BaseModel(torch.nn.Module):

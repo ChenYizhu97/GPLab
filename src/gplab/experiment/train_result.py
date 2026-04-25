@@ -1,9 +1,9 @@
 from typing import Any, Optional
 
-from experiment.execute import execute_request
-from experiment.record import summarize_record
-from experiment.request_common import TrainRequestContext
-from utils.jsonl import append_jsonl
+from gplab.experiment.execute import execute_request
+from gplab.experiment.record import summarize_record
+from gplab.experiment.request_common import TrainRequestContext
+from gplab.utils.jsonl import append_jsonl
 
 
 def execute_train_request(

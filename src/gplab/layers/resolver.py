@@ -5,7 +5,7 @@ from torch.nn import Linear
 from torch_geometric.nn import GraphConv, GCNConv, DenseGCNConv, GINConv
 from torch_geometric.nn.pool import TopKPooling, ASAPooling
 from .pool import DensePoolAdapter, SAGPooling, SparsePooling, PoolOutput
-from utils.registry import BUILTIN_POOLS
+from gplab.utils.registry import BUILTIN_POOLS
 
 SUPPORTED_CONVS = ("GCN", "GraphConv", "GIN")
 
@@ -157,7 +157,7 @@ def pool_resolver(pool:str, in_channels:int, ratio:float=0.5, avg_node_num:Optio
                 nonlinearity=nonlinearity,
             )
         except TypeError:
-            # Backward-compatible fallback for factories that only accept (in_channels, ratio).
+            # Minimal plugin factories may only accept (in_channels, ratio).
             custom_pool = factory(in_channels, ratio)
         
         # Custom pooling is expected to return PoolOutput directly.

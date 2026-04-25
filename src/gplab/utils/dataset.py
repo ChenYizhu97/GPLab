@@ -2,7 +2,7 @@ from torch_geometric.datasets import TUDataset
 import numpy as np
 from torch_geometric.data import Dataset
 from typing import Optional
-from utils.registry import TU_DATASETS
+from gplab.utils.registry import TU_DATASETS
 
 
 def load_dataset(dataset: str) -> Dataset:

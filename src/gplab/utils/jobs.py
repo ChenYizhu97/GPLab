@@ -5,7 +5,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Optional
 
-from utils.validation import (
+from gplab.utils.validation import (
     validate_dataset_value,
     validate_model_type_value,
     validate_pool_ratio_value,

@@ -2,9 +2,10 @@ import toml
 import typer
 from typing_extensions import Annotated, Optional
 
-from experiment.request_cli import build_cli_request
-from experiment.train_result import execute_train_request
-from utils.presentation import build_error_payload, emit_json, validate_output_format
+from gplab.experiment.request_cli import build_cli_request
+from gplab.experiment.train_result import execute_train_request
+from gplab.paths import default_config_path
+from gplab.utils.presentation import build_error_payload, emit_json, validate_output_format
 
 app = typer.Typer(pretty_exceptions_enable=False)
 
@@ -16,8 +17,8 @@ def main(
         dataset: Annotated[Optional[str], typer.Option()] = None,
         model_type: Annotated[Optional[str], typer.Option(help="Model type: sum or plain.")] = None,
         log_file: Annotated[Optional[str], typer.Option(help="JSONL file path to append experiment records.")] = None,
-        model_config: Annotated[str, typer.Option()] = "config/model.toml",
-        experiment_config: Annotated[str, typer.Option()] = "config/experiment.toml",
+        model_config: Annotated[str, typer.Option()] = default_config_path("model.toml"),
+        experiment_config: Annotated[str, typer.Option()] = default_config_path("experiment.toml"),
         tag: Annotated[Optional[str], typer.Option(help="Short tag used to group related runs in logs.")] = None,
         seed_mode: Annotated[Optional[str], typer.Option(help="Seed source mode: auto, file, or list.")] = None,
         seed_base: Annotated[Optional[int], typer.Option(help="Base integer for deterministic seed generation in auto mode.")] = None,

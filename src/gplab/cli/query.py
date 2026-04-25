@@ -3,11 +3,11 @@ import shlex
 import typer
 from typing_extensions import Annotated, Optional
 
-from experiment.identity import compute_benchmark_key, ensure_record_id
-from experiment.record import summarize_record
-from utils.jsonl import read_jsonl
-from utils.presentation import build_error_payload, emit_json, validate_output_format
-from utils.validation import validate_dataset_value, validate_model_type_value, validate_pool_value
+from gplab.experiment.identity import compute_benchmark_key, ensure_record_id
+from gplab.experiment.record import summarize_record
+from gplab.utils.jsonl import read_jsonl
+from gplab.utils.presentation import build_error_payload, emit_json, validate_output_format
+from gplab.utils.validation import validate_dataset_value, validate_model_type_value, validate_pool_value
 
 app = typer.Typer(pretty_exceptions_enable=False)
 
@@ -103,7 +103,7 @@ def main(
     report: Annotated[bool, typer.Option(help="Print grouped benchmark report instead of one summary dict per record.")] = False,
     sort_by: Annotated[str, typer.Option(help="Report sort field: mean, std, avg_best_epoch, avg_val_loss.")] = "mean",
     show_spec: Annotated[bool, typer.Option(help="Include the full spec block in default output.")] = False,
-    show_replay: Annotated[bool, typer.Option(help="Show replay.py command for each matched record.")] = False,
+    show_replay: Annotated[bool, typer.Option(help="Show gplab-replay command for each matched record.")] = False,
     output_format: Annotated[str, typer.Option(help="Output format: text or json.")] = "text",
 ):
     output_format = validate_output_format(output_format)
@@ -157,7 +157,7 @@ def main(
                 summary["spec"] = record["spec"]
             if show_replay:
                 summary["replay_command"] = (
-                    f"python3 replay.py --log-file {shlex.quote(log_file)} --record-id {record['record_id']}"
+                    f"gplab-replay --log-file {shlex.quote(log_file)} --record-id {record['record_id']}"
                 )
             summaries.append(summary)
 
