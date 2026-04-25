@@ -97,8 +97,10 @@ class GraphClassifierBase(BaseModel, ABC):
             nonlinearity=self.nonlinearity,
         )
         self.conv1 = self.conv_layer(self.hidden_features, self.hidden_features)
+        self.conv1_supports_edge_weight = self._conv_supports_edge_weight(self.conv1)
         self.ln_conv1 = self.norm_layer(self.hidden_features)
         self.conv2 = self.conv_layer(self.hidden_features, self.hidden_features)
+        self.conv2_supports_edge_weight = self._conv_supports_edge_weight(self.conv2)
         self.ln_conv2 = self.norm_layer(self.hidden_features)
         self.global_pool = readout
         self.post_gnn = self._build_post_gnn()
@@ -109,12 +111,26 @@ class GraphClassifierBase(BaseModel, ABC):
         x, edge_index, batch, edge_weight = self._unpack_graph(data)
 
         x = self.pre_gnn(x)
-        x = self._apply_conv_block(self.conv1, self.ln_conv1, x, edge_index, edge_weight=edge_weight)
+        x = self._apply_conv_block(
+            self.conv1,
+            self.ln_conv1,
+            x,
+            edge_index,
+            edge_weight=edge_weight,
+            supports_edge_weight=self.conv1_supports_edge_weight,
+        )
 
         before_pool = self._readout_before_pool(x, batch)
         x, edge_index, batch, edge_weight, aux_loss = self._pool(self.pool, x=x, edge_index=edge_index, batch=batch)
 
-        x = self._apply_conv_block(self.conv2, self.ln_conv2, x, edge_index, edge_weight=edge_weight)
+        x = self._apply_conv_block(
+            self.conv2,
+            self.ln_conv2,
+            x,
+            edge_index,
+            edge_weight=edge_weight,
+            supports_edge_weight=self.conv2_supports_edge_weight,
+        )
         after_pool = self.global_pool(x=x, batch=batch)
 
         graph_embedding = self._merge_graph_embeddings(before_pool, after_pool)
@@ -175,8 +191,9 @@ class GraphClassifierBase(BaseModel, ABC):
         x: Tensor,
         edge_index: Tensor,
         edge_weight: Optional[Tensor] = None,
+        supports_edge_weight: bool = False,
     ) -> Tensor:
-        if edge_weight is not None and self._conv_supports_edge_weight(conv):
+        if edge_weight is not None and supports_edge_weight:
             x = conv(x, edge_index, edge_weight=edge_weight)
         else:
             if edge_weight is not None:

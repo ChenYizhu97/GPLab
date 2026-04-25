@@ -1,10 +1,9 @@
 from copy import deepcopy
-from typing import Optional
 
-from .request_common import build_internal_request
+from .request_common import TrainRequestContext, build_internal_request
 
 
-def build_job_request(job: dict) -> tuple[dict, Optional[str], str, int, bool, Optional[list[int]]]:
+def build_job_request(job: dict) -> TrainRequestContext:
     normalized = deepcopy(job)
     model_conf = {"model": deepcopy(normalized["model"])}
     experiment_conf = {
@@ -35,11 +34,11 @@ def build_job_request(job: dict) -> tuple[dict, Optional[str], str, int, bool, O
         seed_list=deepcopy(normalized["train"]["seed_list"]),
         allow_duplicate_seeds=normalized["train"]["allow_duplicate_seeds"],
     )
-    return (
-        conf,
-        normalized["log_file"],
-        normalized["train"]["seed_mode"],
-        normalized["train"]["seed_base"],
-        normalized["train"]["allow_duplicate_seeds"],
-        deepcopy(normalized["train"]["seed_list"]),
+    return TrainRequestContext(
+        conf=conf,
+        log_file=normalized["log_file"],
+        seed_mode=normalized["train"]["seed_mode"],
+        seed_base=normalized["train"]["seed_base"],
+        allow_duplicate_seeds=normalized["train"]["allow_duplicate_seeds"],
+        seed_list=deepcopy(normalized["train"]["seed_list"]),
     )

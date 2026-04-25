@@ -1,7 +1,7 @@
 from copy import deepcopy
 from typing import Optional
 
-from .request_common import build_internal_request, resolve_request_seed_options
+from .request_common import TrainRequestContext, build_internal_request, resolve_request_seed_options
 
 
 def build_cli_request(
@@ -18,7 +18,7 @@ def build_cli_request(
     seed_base: Optional[int],
     seed_list: Optional[str],
     allow_duplicate_seeds: Optional[bool],
-) -> tuple[dict, Optional[str], str, Optional[int], bool, Optional[list[int]]]:
+) -> TrainRequestContext:
     merged_model_conf = deepcopy(model_conf)
     merged_experiment_conf = deepcopy(experiment_conf)
 
@@ -44,4 +44,11 @@ def build_cli_request(
         seed_list=final_seed_list,
         allow_duplicate_seeds=final_allow_dup,
     )
-    return conf, log_file, final_seed_mode, final_seed_base, final_allow_dup, final_seed_list
+    return TrainRequestContext(
+        conf=conf,
+        log_file=log_file,
+        seed_mode=final_seed_mode,
+        seed_base=final_seed_base,
+        allow_duplicate_seeds=final_allow_dup,
+        seed_list=final_seed_list,
+    )

@@ -19,11 +19,9 @@ def main(
     try:
         loaded_job = load_job_file(job_file)
         normalized_job = normalize_train_job(loaded_job)
-        conf, final_log_file, final_seed_mode, final_seed_base, final_allow_dup, final_seed_list = (
-            build_job_request(normalized_job)
-        )
-        record = execute_request(conf, emit_text=output_format == "text")
-        append_record_if_needed(final_log_file, record)
+        request = build_job_request(normalized_job)
+        record = execute_request(request.conf, emit_text=output_format == "text")
+        append_record_if_needed(request.log_file, record)
 
         if output_format == "json":
             emit_json(
@@ -36,11 +34,11 @@ def main(
                         "job_file": job_file,
                         "mode": "strict_job",
                         "normalized_job": normalized_job,
-                        "log_file": final_log_file,
-                        "seed_mode": final_seed_mode,
-                        "seed_base": final_seed_base,
-                        "allow_duplicate_seeds": final_allow_dup,
-                        "seed_list": final_seed_list,
+                        "log_file": request.log_file,
+                        "seed_mode": request.seed_mode,
+                        "seed_base": request.seed_base,
+                        "allow_duplicate_seeds": request.allow_duplicate_seeds,
+                        "seed_list": request.seed_list,
                     },
                 }
             )

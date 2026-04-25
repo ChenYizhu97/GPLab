@@ -1,4 +1,6 @@
 from copy import deepcopy
+from dataclasses import dataclass
+import math
 from typing import Optional
 
 from utils.cli import (
@@ -8,6 +10,16 @@ from utils.cli import (
     validate_pool,
     validate_pool_ratio,
 )
+
+
+@dataclass(frozen=True)
+class TrainRequestContext:
+    conf: dict
+    log_file: Optional[str]
+    seed_mode: str
+    seed_base: Optional[int]
+    allow_duplicate_seeds: bool
+    seed_list: Optional[list[int]]
 
 
 def validate_config_sections(model_conf: dict, experiment_conf: dict) -> None:
@@ -20,7 +32,13 @@ def validate_config_sections(model_conf: dict, experiment_conf: dict) -> None:
 def normalize_split_ratio(expr_conf: dict) -> tuple[float, float]:
     train_ratio = float(expr_conf.get("train_ratio", 0.8))
     val_ratio = float(expr_conf.get("val_ratio", 0.1))
-    if train_ratio <= 0 or val_ratio <= 0 or train_ratio + val_ratio >= 1:
+    if (
+        not math.isfinite(train_ratio)
+        or not math.isfinite(val_ratio)
+        or train_ratio <= 0
+        or val_ratio <= 0
+        or train_ratio + val_ratio >= 1
+    ):
         raise ValueError(
             "Invalid split ratio. Require train_ratio > 0, val_ratio > 0, and train_ratio + val_ratio < 1."
         )

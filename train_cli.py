@@ -31,7 +31,7 @@ def main(
         model_conf = toml.load(model_config)
         experiment_conf = toml.load(experiment_config)
 
-        conf, final_log_file, final_seed_mode, final_seed_base, final_allow_dup, final_seed_list = build_cli_request(
+        request = build_cli_request(
             model_conf=model_conf,
             experiment_conf=experiment_conf,
             pool=pool,
@@ -46,8 +46,8 @@ def main(
             allow_duplicate_seeds=allow_duplicate_seeds,
         )
 
-        record = execute_request(conf, emit_text=output_format == "text")
-        append_record_if_needed(final_log_file, record)
+        record = execute_request(request.conf, emit_text=output_format == "text")
+        append_record_if_needed(request.log_file, record)
 
         if output_format == "json":
             emit_json(
@@ -57,11 +57,11 @@ def main(
                     "record": record,
                     "summary": summarize_record(record),
                     "request": {
-                        "log_file": final_log_file,
-                        "seed_mode": final_seed_mode,
-                        "seed_base": final_seed_base,
-                        "allow_duplicate_seeds": final_allow_dup,
-                        "seed_list": final_seed_list,
+                        "log_file": request.log_file,
+                        "seed_mode": request.seed_mode,
+                        "seed_base": request.seed_base,
+                        "allow_duplicate_seeds": request.allow_duplicate_seeds,
+                        "seed_list": request.seed_list,
                     },
                 }
             )

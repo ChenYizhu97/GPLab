@@ -173,7 +173,8 @@ pool.md
 # local planning notes
 *plan*.md
 
-prospec.md
+agent.md
+.codex
 
 # benchmark scripts
 check_*.sh

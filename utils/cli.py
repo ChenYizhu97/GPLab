@@ -1,5 +1,8 @@
-import typer
+import math
 from typing import Optional
+
+import typer
+
 from utils.registry import TU_DATASETS, BUILTIN_POOLS
 from utils.presentation import validate_output_format
 
@@ -23,7 +26,7 @@ def validate_pool(name: str, builtins: tuple[str, ...] = BUILTIN_POOLS) -> bool:
 
 
 def validate_pool_ratio(ratio: float) -> None:
-    if ratio <= 0.0 or ratio > 1.0:
+    if not math.isfinite(ratio) or ratio <= 0.0 or ratio > 1.0:
         raise typer.BadParameter("pool_ratio must be in (0, 1].", param_hint="--pool-ratio")
 
 
@@ -64,6 +67,15 @@ def parse_csv_list(value: str) -> list[str]:
     return values
 
 
+def _normalize_config_seed(value) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise typer.BadParameter(
+            "experiment.seed_list in config must be a list of integers.",
+            param_hint="--seed-list",
+        )
+    return int(value)
+
+
 def resolve_seed_options(
     seed_mode: Optional[str],
     seed_base: Optional[int],
@@ -82,7 +94,7 @@ def resolve_seed_options(
                     "experiment.seed_list in config must be a list of integers.",
                     param_hint="--seed-list",
                 )
-            final_seed_list = [int(value) for value in conf_seed_list]
+            final_seed_list = [_normalize_config_seed(value) for value in conf_seed_list]
 
     final_seed_mode = seed_mode if seed_mode is not None else conf.get("seed_mode", "auto")
     if final_seed_list is not None:

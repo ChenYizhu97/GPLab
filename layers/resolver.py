@@ -7,13 +7,21 @@ from torch_geometric.nn.pool import TopKPooling, ASAPooling
 from .pool import DensePoolAdapter, SAGPooling, SparsePooling, PoolOutput
 from utils.registry import BUILTIN_POOLS
 
+SUPPORTED_CONVS = ("GCN", "GraphConv", "GIN")
 
-def conv_resolver(layer:str) -> Optional[torch.nn.Module]:
-    # add more convolution layer resolvers if use other convolution layers
-    if layer == "GCN": return GCNConv
-    if layer == "GraphConv": return GraphConv
-    if layer == "GIN": return lambda in_channel, out_channel: GINConv(nn=Linear(in_channel, out_channel))
-    return None
+
+def conv_resolver(layer: str):
+    # Add more convolution layer resolvers here when the benchmark supports them.
+    if layer == "GCN":
+        return GCNConv
+    if layer == "GraphConv":
+        return GraphConv
+    if layer == "GIN":
+        return lambda in_channel, out_channel: GINConv(nn=Linear(in_channel, out_channel))
+    raise ValueError(
+        f"Unknown convolution layer '{layer}'. "
+        f"Supported conv layers: {', '.join(SUPPORTED_CONVS)}."
+    )
 
 
 def list_builtin_pools() -> tuple[str, ...]:

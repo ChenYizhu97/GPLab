@@ -1,5 +1,6 @@
 import hashlib
 import json
+import math
 from copy import deepcopy
 from pathlib import Path
 from typing import Optional
@@ -57,14 +58,6 @@ def _require_keys(payload: dict, *, required: set[str], label: str) -> None:
         raise ValueError(f"Missing required {label} field(s): {joined}.")
 
 
-def _normalize_seed_list(seed_list) -> Optional[list[int]]:
-    if seed_list is None:
-        return None
-    if not isinstance(seed_list, list) or not seed_list:
-        raise ValueError("train.seed_list must be a non-empty array of integers.")
-    return [int(value) for value in seed_list]
-
-
 def _normalize_optional_string(value, *, field_name: str) -> Optional[str]:
     if value is None:
         return None
@@ -91,10 +84,27 @@ def _normalize_int(value, *, field_name: str) -> int:
     return int(value)
 
 
+def _normalize_int_list(value, *, field_name: str, allow_empty: bool = True) -> list[int]:
+    if not isinstance(value, list):
+        raise ValueError(f"{field_name} must be an array of integers.")
+    if not allow_empty and not value:
+        raise ValueError(f"{field_name} must be a non-empty array of integers.")
+    return [_normalize_int(item, field_name=f"{field_name}[]") for item in value]
+
+
+def _normalize_seed_list(seed_list) -> Optional[list[int]]:
+    if seed_list is None:
+        return None
+    return _normalize_int_list(seed_list, field_name="train.seed_list", allow_empty=False)
+
+
 def _normalize_float(value, *, field_name: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"{field_name} must be a number.")
-    return float(value)
+    normalized = float(value)
+    if not math.isfinite(normalized):
+        raise ValueError(f"{field_name} must be a finite number.")
+    return normalized
 
 
 def load_job_file(path: str) -> dict:
@@ -138,8 +148,8 @@ def normalize_train_job(job: dict) -> dict:
             "nonlinearity": _require_string(model["nonlinearity"], field_name="model.nonlinearity"),
             "p_dropout": _normalize_float(model["p_dropout"], field_name="model.p_dropout"),
             "conv_layer": _require_string(model["conv_layer"], field_name="model.conv_layer"),
-            "pre_gnn": [_normalize_int(value, field_name="model.pre_gnn[]") for value in model["pre_gnn"]],
-            "post_gnn": [_normalize_int(value, field_name="model.post_gnn[]") for value in model["post_gnn"]],
+            "pre_gnn": _normalize_int_list(model["pre_gnn"], field_name="model.pre_gnn"),
+            "post_gnn": _normalize_int_list(model["post_gnn"], field_name="model.post_gnn"),
             "variant": _require_string(model["variant"], field_name="model.variant"),
         },
         "train": {

@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -112,28 +114,29 @@ def _execute_single_run(model, dataset, run_idx: int, run_seed: int, run_split: 
 
 
 def execute_request(conf: dict, *, emit_text: bool = True) -> dict:
+    working_conf = deepcopy(conf)
     configure_runtime_threads()
     set_np_and_torch(0)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     runtime = build_runtime_meta(device)
-    expr_conf = conf["experiment"]
+    expr_conf = working_conf["experiment"]
     expr_conf["_silent"] = not emit_text
     try:
         if emit_text:
-            print_expr_info(conf, device)
+            print_expr_info(working_conf, device)
 
-        dataset = load_dataset(conf["dataset"])
+        dataset = load_dataset(working_conf["dataset"])
         if dataset is None:
-            raise ValueError(f"Failed to load dataset '{conf['dataset']}'.")
+            raise ValueError(f"Failed to load dataset '{working_conf['dataset']}'.")
         if len(dataset) == 0:
             raise ValueError("Loaded dataset is empty.")
 
         avg_node_num = dataset._data.num_nodes // len(dataset)
-        model = _build_model(conf, dataset, avg_node_num, device)
+        model = _build_model(working_conf, dataset, avg_node_num, device)
         if emit_text:
             rprint(summary(model, data=dataset[0].to(device), leaf_module=None, max_depth=5))
 
-        split_indices_all = _prepare_split_metadata(conf, len(dataset))
+        split_indices_all = _prepare_split_metadata(working_conf, len(dataset))
         metrics = _build_metrics(device, dataset.num_classes)
 
         run_records = []
@@ -154,6 +157,6 @@ def execute_request(conf: dict, *, emit_text: bool = True) -> dict:
 
             run_records.append(run_record)
 
-        return build_record(conf, runtime=runtime, run_records=run_records)
+        return build_record(working_conf, runtime=runtime, run_records=run_records)
     finally:
         expr_conf.pop("_silent", None)
