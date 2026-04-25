@@ -1,7 +1,7 @@
 from copy import deepcopy
 from typing import Optional
 
-from gplab.utils.cli import resolve_seed_options
+from gplab.cli.options import resolve_seed_options
 
 from .request_common import TrainRequestContext, build_internal_request
 

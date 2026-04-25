@@ -5,7 +5,7 @@ from typing_extensions import Annotated, Optional
 from gplab.experiment.request_cli import build_cli_request
 from gplab.experiment.train_result import execute_train_request
 from gplab.paths import default_config_path
-from gplab.utils.presentation import build_error_payload, emit_json, validate_output_format
+from gplab.cli.output import build_error_payload, emit_json, validate_output_format
 
 app = typer.Typer(pretty_exceptions_enable=False)
 

@@ -1,18 +1,20 @@
-import torch
-from torch import Tensor
 from typing import Optional
 
+import torch
+from torch import Tensor
+
+
 def to_sparse_batch(
-        x:Tensor,
-        adj:Tensor,
-        mask:Optional[Tensor] = None
+    x: Tensor,
+    adj: Tensor,
+    mask: Optional[Tensor] = None,
 ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
     # `mask` is accepted for interface symmetry with dense helpers, but GPLab's
     # dense adapter currently treats every fixed output cluster slot as a valid
     # coarse node by protocol, so the sparse write-back keeps all C slots.
     batch_num = x.size(0)
     node_num = x.size(1)
-    x = x.reshape((batch_num*node_num, -1))
+    x = x.reshape((batch_num * node_num, -1))
 
     # Dense pooling outputs fixed coarse cluster slots, so we expand the full
     # per-graph C x C adjacency and carry its values as edge weights.

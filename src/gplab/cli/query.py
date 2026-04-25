@@ -5,8 +5,8 @@ from typing_extensions import Annotated, Optional
 
 from gplab.experiment.identity import compute_benchmark_key, ensure_record_id
 from gplab.experiment.record import summarize_record
+from gplab.cli.output import build_error_payload, emit_json, validate_output_format
 from gplab.utils.jsonl import read_jsonl
-from gplab.utils.presentation import build_error_payload, emit_json, validate_output_format
 from gplab.utils.validation import validate_dataset_value, validate_model_type_value, validate_pool_value
 
 app = typer.Typer(pretty_exceptions_enable=False)

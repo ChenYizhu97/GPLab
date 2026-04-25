@@ -10,9 +10,9 @@ import typer
 from typing_extensions import Annotated, Optional
 
 from gplab.paths import default_config_path, project_root
-from gplab.utils.cli import parse_csv_list, parse_seed_list
-from gplab.utils.jobs import build_execution_plan_from_configs
-from gplab.utils.presentation import build_error_payload, emit_json, validate_output_format
+from gplab.cli.options import parse_csv_list, parse_seed_list
+from gplab.cli.output import build_error_payload, emit_json, validate_output_format
+from gplab.jobs import build_execution_plan_from_configs
 
 app = typer.Typer(pretty_exceptions_enable=False)
 PROJECT_ROOT = project_root()

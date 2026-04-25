@@ -13,9 +13,9 @@ from typing_extensions import Annotated
 from gplab.experiment.identity import ensure_record_id
 from gplab.experiment.record import summarize_record
 from gplab.paths import project_root
+from gplab.cli.output import build_error_payload, emit_json, validate_output_format
+from gplab.runtime import build_runtime_meta
 from gplab.utils.jsonl import read_jsonl
-from gplab.utils.io import build_runtime_meta
-from gplab.utils.presentation import build_error_payload, emit_json, validate_output_format
 
 app = typer.Typer(pretty_exceptions_enable=False)
 PROJECT_ROOT = project_root()

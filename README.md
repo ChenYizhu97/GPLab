@@ -51,22 +51,28 @@ GPLab/
   src/
     gplab/
       cli/
+      data/
+      jobs/
       experiment/
       model/
       layers/
+      runtime.py
       utils/
 ```
 
 Key modules:
 
 - `src/gplab/cli/`: CLI implementations exposed as `gplab-*` console commands
+- `src/gplab/data/`: TU dataset loading, splitting, and sparse batch conversion helpers
+- `src/gplab/jobs/`: strict job schema, defaults, file loading, and case manifest expansion
 - `src/gplab/experiment/request_cli.py` / `src/gplab/experiment/request_job.py`: input-specific request builders
 - `src/gplab/experiment/execute.py`: dataset loading, seed resolution, model construction, and multi-run execution
 - `src/gplab/experiment/record.py`: `spec`, `runtime`, `result`, and `record_id` assembly
 - `src/gplab/model/`: shared graph classifier backbone with `sum` and `plain` variants
 - `src/gplab/layers/resolver.py`: convolution resolver, pooling resolver, and custom plugin loading
 - `src/gplab/layers/pool/DensePoolAdapter.py`: dense-to-sparse bridge for dense pooling methods
-- `src/gplab/utils/`: dataset loading, reproducibility helpers, runtime metadata, and JSONL I/O
+- `src/gplab/runtime.py`: runtime metadata and text-mode experiment presentation
+- `src/gplab/utils/`: shared registries, validation, and JSONL I/O
 
 ## Execution Flows
 
